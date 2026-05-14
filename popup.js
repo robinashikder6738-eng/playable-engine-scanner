@@ -88,15 +88,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (currentResults.length === 0) return;
     
     const formattedText = currentResults.map(res => {
+      const adPlatformStr = res.adPlatform === 'Unknown' ? '未知' : (res.adPlatform || '未知');
+      const engineStr = res.engine === 'Unknown' ? '未知' : (res.engine || '未知');
+      const renderLibStr = res.renderLibrary === 'Unknown' ? '未知' : (res.renderLibrary || '未知');
+      const confidenceStr = res.confidence || '未知';
+
       return `【试玩广告识别结果】
 
 最终审核结论：${res.finalReviewStatus || '未识别，交技术复核'}
-广告平台：${res.adPlatform}
-制作引擎：${res.engine}
+广告平台：${adPlatformStr}
+制作引擎：${engineStr}
 引擎版本：${res.engineVersion || '未知'}
-渲染库：${res.renderLibrary || 'Unknown'}
+渲染库：${renderLibStr}
 渲染库版本：${res.renderLibraryVersion || '未知'}
-置信度：${res.confidence}
+置信度：${confidenceStr}
 
 平台强证据：
 ${res.confirmedPlatformEvidence && res.confirmedPlatformEvidence.length > 0 ? res.confirmedPlatformEvidence.map(e => '- ' + e).join('\n') : '- 无'}
@@ -127,15 +132,20 @@ URL：${res.url}
     if (currentResults.length === 0) return;
     
     const formattedText = currentResults.map(res => {
+      const adPlatformStr = res.adPlatform === 'Unknown' ? '未知' : (res.adPlatform || '未知');
+      const engineStr = res.engine === 'Unknown' ? '未知' : (res.engine || '未知');
+      const renderLibStr = res.renderLibrary === 'Unknown' ? '未知' : (res.renderLibrary || '未知');
+      const confidenceStr = res.confidence || '未知';
+
       return [
-        `URL：${res.url}`,
+        `URL：${res.url || '未知'}`,
         `最终审核结论：${res.finalReviewStatus || '未识别，交技术复核'}`,
-        `广告平台：${res.adPlatform}${res.adPlatform === 'Unknown' && res.platformSuspicion ? '\\n平台疑似：' + res.platformSuspicion : ''}`,
-        `制作引擎：${res.engine}`,
+        `广告平台：${adPlatformStr}${adPlatformStr === '未知' && res.platformSuspicion ? '\\n平台疑似：' + res.platformSuspicion : ''}`,
+        `制作引擎：${engineStr}`,
         `引擎版本：${res.engineVersion || '未知'}`,
-        `渲染库：${res.renderLibrary || 'Unknown'}`,
+        `渲染库：${renderLibStr}`,
         `渲染库版本：${res.renderLibraryVersion || '未知'}`,
-        `置信度：${res.confidence}`,
+        `置信度：${confidenceStr}`,
         `平台强证据：${res.confirmedPlatformEvidence?.join(', ') || '无'}`,
         `平台弱证据：${res.suspiciousPlatformEvidence?.join(', ') || '无'}`,
         `已忽略平台证据：${res.ignoredPlatformEvidence?.join(', ') || '无'}`,
@@ -294,19 +304,24 @@ URL：${res.url}
       
       const confidenceColor = (res.confidence === '高' || res.confidence?.includes('高')) ? '#10b981' : (res.confidence?.includes('中') ? '#f59e0b' : '#6b7280');
       
+      const adPlatformStr = res.adPlatform === 'Unknown' ? '未知' : (res.adPlatform || '未知');
+      const engineStr = res.engine === 'Unknown' ? '未知' : (res.engine || '未知');
+      const renderLibStr = res.renderLibrary === 'Unknown' ? '未知' : (res.renderLibrary || '未知');
+      const confidenceStr = res.confidence || '未知';
+
       card.innerHTML = `
         <div class="result-header">
-          <span class="engine-name">${res.engine}</span>
-          <span class="confidence-badge" style="color: ${confidenceColor}">置信度：${res.confidence}</span>
+          <span class="engine-name">${engineStr}</span>
+          <span class="confidence-badge" style="color: ${confidenceColor}">置信度：${confidenceStr}</span>
         </div>
         
         <div class="result-body">
           <p><strong>最终结论：</strong> <span style="font-weight: 600; color: #ef4444">${res.finalReviewStatus || '未识别，交技术复核'}</span></p>
-          <p><strong>广告平台：</strong> ${res.adPlatform}</p>
-          ${res.adPlatform === 'Unknown' && res.platformSuspicion ? `<p><strong>平台疑似：</strong> ${res.platformSuspicion}</p>` : ''}
-          <p><strong>制作引擎：</strong> ${res.engine}</p>
+          <p><strong>广告平台：</strong> ${adPlatformStr}</p>
+          ${adPlatformStr === '未知' && res.platformSuspicion ? `<p><strong>平台疑似：</strong> ${res.platformSuspicion}</p>` : ''}
+          <p><strong>制作引擎：</strong> ${engineStr}</p>
           <p><strong>引擎版本：</strong> ${res.engineVersion || '未知'}</p>
-          <p><strong>渲染库：</strong> ${res.renderLibrary || 'Unknown'}</p>
+          <p><strong>渲染库：</strong> ${renderLibStr}</p>
           <p><strong>库版本：</strong> ${res.renderLibraryVersion || '未知'}</p>
           
           ${res.confirmedPlatformEvidence?.length > 0 ? `
