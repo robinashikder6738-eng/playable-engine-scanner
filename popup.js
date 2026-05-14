@@ -88,25 +88,32 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (currentResults.length === 0) return;
     
     const formattedText = currentResults.map(res => {
-      const evidence = [
-        `广告平台：${res.adPlatform}`,
-        `制作引擎：${res.engine}`,
-        `引擎版本：${res.engineVersion || '未知'}`,
-        `渲染库：${res.renderLibrary || 'Unknown'}`,
-        `渲染库版本：${res.renderLibraryVersion || '未知'}`,
-        `置信度：${res.confidence}`,
-        `平台证据：${res.platformEvidence?.join(', ') || '无'}`,
-        `引擎证据：${res.engineEvidence?.join(', ') || '无'}`,
-        `渲染库证据：${res.renderLibraryEvidence?.join(', ') || '无'}`,
-        `源码命中：${res.manualSearchHits?.join(', ') || '无'}`,
-        `风险提示：${res.conflictWarnings?.join(', ') || '无'}`,
-        `处理建议：${res.recommendation}`,
-        `URL：${res.url}`,
-        `标题：${currentScanData.lastScanTitle || activeTabTitle}`,
-        `TabId：${activeTabId}`,
-        `时间：${res.timestamp}`
-      ].join('\n');
-      return evidence;
+      return `【试玩广告识别结果】
+
+最终审核结论：${res.finalReviewStatus || '未识别，交技术复核'}
+广告平台：${res.adPlatform}
+制作引擎：${res.engine}
+引擎版本：${res.engineVersion || '未知'}
+渲染库：${res.renderLibrary || 'Unknown'}
+渲染库版本：${res.renderLibraryVersion || '未知'}
+置信度：${res.confidence}
+
+平台强证据：
+${res.confirmedPlatformEvidence && res.confirmedPlatformEvidence.length > 0 ? res.confirmedPlatformEvidence.map(e => '- ' + e).join('\n') : '- 无'}
+
+平台弱特征(可疑)：
+${res.suspiciousPlatformEvidence && res.suspiciousPlatformEvidence.length > 0 ? res.suspiciousPlatformEvidence.map(e => '- ' + e).join('\n') : '- 无'}
+
+引擎证据：
+${res.engineEvidence && res.engineEvidence.length > 0 ? res.engineEvidence.map(e => '- ' + e).join('\n') : '- 无'}${res.renderLibraryEvidence && res.renderLibraryEvidence.length > 0 ? '\n' + res.renderLibraryEvidence.map(e => '- ' + e).join('\n') : ''}${res.manualSearchHits && res.manualSearchHits.length > 0 ? '\n' + res.manualSearchHits.map(e => '- ' + e).join('\n') : ''}
+
+风险提示：
+${res.conflictWarnings && res.conflictWarnings.length > 0 ? res.conflictWarnings.map(e => '- ' + e).join('\n') : '- 无'}
+
+处理建议：${res.recommendation}
+
+URL：${res.url}
+时间：${res.timestamp}`;
     }).join('\n\n---\n\n');
 
     navigator.clipboard.writeText(formattedText).then(() => {
@@ -122,13 +129,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     const formattedText = currentResults.map(res => {
       return [
         `URL：${res.url}`,
-        `广告平台：${res.adPlatform}`,
+        `最终审核结论：${res.finalReviewStatus || '未识别，交技术复核'}`,
+        `广告平台：${res.adPlatform}${res.adPlatform === 'Unknown' && res.platformSuspicion ? '\\n平台疑似：' + res.platformSuspicion : ''}`,
         `制作引擎：${res.engine}`,
         `引擎版本：${res.engineVersion || '未知'}`,
         `渲染库：${res.renderLibrary || 'Unknown'}`,
         `渲染库版本：${res.renderLibraryVersion || '未知'}`,
         `置信度：${res.confidence}`,
-        `平台证据：${res.platformEvidence?.join(', ') || '无'}`,
+        `平台强证据：${res.confirmedPlatformEvidence?.join(', ') || '无'}`,
+        `平台弱证据：${res.suspiciousPlatformEvidence?.join(', ') || '无'}`,
         `引擎证据：${res.engineEvidence?.join(', ') || '无'}`,
         `渲染库证据：${res.renderLibraryEvidence?.join(', ') || '无'}`,
         `源码命中：${res.manualSearchHits?.join(', ') || '无'}`,
@@ -291,16 +300,25 @@ document.addEventListener('DOMContentLoaded', async () => {
         </div>
         
         <div class="result-body">
+          <p><strong>最终结论：</strong> <span style="font-weight: 600; color: #ef4444">${res.finalReviewStatus || '未识别，交技术复核'}</span></p>
           <p><strong>广告平台：</strong> ${res.adPlatform}</p>
+          ${res.adPlatform === 'Unknown' && res.platformSuspicion ? `<p><strong>平台疑似：</strong> ${res.platformSuspicion}</p>` : ''}
           <p><strong>制作引擎：</strong> ${res.engine}</p>
           <p><strong>引擎版本：</strong> ${res.engineVersion || '未知'}</p>
           <p><strong>渲染库：</strong> ${res.renderLibrary || 'Unknown'}</p>
           <p><strong>库版本：</strong> ${res.renderLibraryVersion || '未知'}</p>
           
-          ${res.platformEvidence?.length > 0 ? `
-            <div style="font-size: 11px; font-weight: 600; margin: 8px 0 4px; color: #475569;">平台证据：</div>
+          ${res.confirmedPlatformEvidence?.length > 0 ? `
+            <div style="font-size: 11px; font-weight: 600; margin: 8px 0 4px; color: #475569;">平台强证据：</div>
             <ul class="evidence-list">
-              ${res.platformEvidence.map(e => `<li>${e}</li>`).join('')}
+              ${res.confirmedPlatformEvidence.map(e => `<li>${e}</li>`).join('')}
+            </ul>
+          ` : ''}
+
+          ${res.suspiciousPlatformEvidence?.length > 0 ? `
+            <div style="font-size: 11px; font-weight: 600; margin: 8px 0 4px; color: #475569;">平台弱特征(可疑)：</div>
+            <ul class="evidence-list" style="color: #64748b;">
+              ${res.suspiciousPlatformEvidence.map(e => `<li>${e}</li>`).join('')}
             </ul>
           ` : ''}
 

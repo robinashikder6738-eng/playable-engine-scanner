@@ -2,77 +2,135 @@
  * Platform detection rules for Playable Ads
  */
 
-export function detectPlatforms(meta) {
+export function detectPlatforms(meta, globals = {}, fetchedSources = []) {
   const platformsDetected = [];
-  const platformEvidence = [];
-  const combinedStr = (meta.html + meta.externalScripts.join(' ') + meta.resources.join(' ')).toLowerCase();
+  const confirmedPlatformEvidence = [];
+  const suspiciousPlatformEvidence = [];
+  const ignoredPlatformEvidence = [];
+
+  const urlLower = (meta.url || '').toLowerCase();
+  const visibleTextCombined = (meta.visibleText || []).join(' ').toLowerCase();
+  const sourceTexts = [...meta.inlineScripts, ...fetchedSources.map(s => s.text)].join('\n').toLowerCase();
   
   let adPlatform = 'Unknown';
+  let platformSuspicion = '';
 
-  // MTG / Mintegral
-  const mtgEvidence = [];
-  const mtgKeys = ['mintegral', 'mbridge', 'mobvista', 'mtg-sdk', 'mtg_playable'];
-  mtgKeys.forEach(k => {
-    if (combinedStr.includes(k)) mtgEvidence.push(`探测到 MTG 特征: ${k}`);
+  const checkUrl = (keys) => {
+    let evidence = [];
+    keys.forEach(k => {
+      if (urlLower.includes(k)) evidence.push(`URL 明确包含: ${k}`);
+      if (meta.externalScripts.some(s => s.toLowerCase().includes(k))) evidence.push(`外链 JS 包含: ${k}`);
+      if (meta.resources.some(r => r.toLowerCase().includes(k))) evidence.push(`资源路径包含: ${k}`);
+    });
+    return evidence;
+  };
+
+  // MTG
+  const mtgConfirmedUrl = checkUrl(['mintegral', 'mobvista', 'mbridge', 'playable.mintegral']);
+  let mtgConfirmed = [...mtgConfirmedUrl];
+  
+  ['mbridge', 'MBridge', 'MBSDK', 'mintegral'].forEach(g => {
+    if (globals[g]) mtgConfirmed.push(`全局对象存在: ${g}`);
   });
-  if (/\bmtg\b/i.test(combinedStr)) mtgEvidence.push('探测到精确匹配的 "mtg" 标识');
-  if (mtgEvidence.length > 0) {
-    adPlatform = 'Mintegral / MTG';
-    platformEvidence.push(...mtgEvidence);
+  
+  ['mintegral', 'mobvista', 'mbridge'].forEach(k => {
+    if (visibleTextCombined.includes(k)) mtgConfirmed.push(`可见 DOM 文本包含: ${k}`);
+  });
+
+  // Medium: Fetched Source context
+  let mtgMedium = [];
+  const fetchedCount = fetchedSources.filter(src => {
+    const text = src.text.toLowerCase();
+    let hitCount = 0;
+    ['mbridge', 'mobvista', 'mintegral', 'mtg_playable', 'playable.mintegral'].forEach(k => {
+      if (text.includes(k)) hitCount++;
+    });
+    return hitCount > 1;
+  });
+  if (fetchedCount.length > 0) {
+    mtgMedium.push(`源码中检测到多个 MTG 相关特征 (${fetchedCount.length} 个文件)`);
+  }
+  
+  fetchedSources.forEach(src => {
+    if (src.text.toLowerCase().includes('mbridge') && /(ad|playable|sdk|bridge|openURL|close|reward)/i.test(src.text)) {
+      mtgMedium.push('mbridge 上下文包含广告运行时调用特征');
+    }
+  });
+
+  const mtgWeakKeys = ['mintegral', 'mobvista', 'mbridge'];
+  let mtgSuspicious = [];
+  mtgWeakKeys.forEach(k => {
+    if (sourceTexts.includes(k)) mtgSuspicious.push(`源码中存在弱关键词: ${k}`);
+  });
+
+  if (mtgConfirmed.length > 0) {
+    confirmedPlatformEvidence.push(...mtgConfirmed);
     platformsDetected.push('Mintegral / MTG');
+  } else if (mtgMedium.length >= 2) {
+    confirmedPlatformEvidence.push(...mtgMedium);
+    platformsDetected.push('Mintegral / MTG');
+  } else if (mtgSuspicious.length > 0) {
+    suspiciousPlatformEvidence.push(...mtgSuspicious);
+    platformSuspicion = 'Mintegral / MTG 弱特征';
   }
 
   // AppLovin
-  const alEvidence = [];
-  ['applovin.com', 'res1.applovin.com', 'applovin', 'app-lovin'].forEach(k => {
-    if (combinedStr.includes(k)) alEvidence.push(`探测到 AppLovin 特征: ${k}`);
-  });
-  if (alEvidence.length > 0) {
-    if (adPlatform !== 'Unknown' && adPlatform !== 'AppLovin') adPlatform = '多平台特征';
-    else adPlatform = 'AppLovin';
-    platformEvidence.push(...alEvidence);
-    if (!platformsDetected.includes('AppLovin')) platformsDetected.push('AppLovin');
-  }
-
-  // Unity Ads
-  const unityAdsEvidence = [];
-  ['unityads', 'unity3d.com', 'unity.com/ads'].forEach(k => {
-    if (combinedStr.includes(k)) unityAdsEvidence.push(`探测到 Unity Ads 特征: ${k}`);
-  });
-  if (unityAdsEvidence.length > 0) {
-    if (platformsDetected.length > 0 && !platformsDetected.includes('Unity Ads')) adPlatform = '多平台特征';
-    else adPlatform = 'Unity Ads';
-    platformEvidence.push(...unityAdsEvidence);
-    platformsDetected.push('Unity Ads');
+  const alConfirmed = checkUrl(['applovin.com', 'res1.applovin.com', 'applovin']);
+  if (alConfirmed.length > 0) {
+    confirmedPlatformEvidence.push(...alConfirmed);
+    platformsDetected.push('AppLovin');
+  } else if (sourceTexts.includes('applovin')) {
+    suspiciousPlatformEvidence.push('源码中存在弱关键词: applovin');
   }
 
   // ironSource
-  const irEvidence = [];
-  ['ironsource', 'supersonicads'].forEach(k => {
-    if (combinedStr.includes(k)) irEvidence.push(`探测到 ironSource 特征: ${k}`);
-  });
-  if (irEvidence.length > 0) {
-    if (platformsDetected.length > 0 && !platformsDetected.includes('ironSource')) adPlatform = '多平台特征';
-    else adPlatform = 'ironSource';
-    platformEvidence.push(...irEvidence);
+  const irConfirmed = checkUrl(['ironsource', 'supersonicads', 'playable.ironsrc']);
+  if (irConfirmed.length > 0) {
+    confirmedPlatformEvidence.push(...irConfirmed);
     platformsDetected.push('ironSource');
+  } else if (sourceTexts.includes('ironsource')) {
+    suspiciousPlatformEvidence.push('源码中存在弱关键词: ironsource');
   }
 
   // Vungle / Liftoff
-  const vungleEvidence = [];
-  ['vungle', 'liftoff'].forEach(k => {
-    if (combinedStr.includes(k)) vungleEvidence.push(`探测到 Vungle/Liftoff 特征: ${k}`);
-  });
-  if (vungleEvidence.length > 0) {
-    if (platformsDetected.length > 0 && !platformsDetected.includes('Vungle / Liftoff')) adPlatform = '多平台特征';
-    else adPlatform = 'Vungle / Liftoff';
-    platformEvidence.push(...vungleEvidence);
+  const vungleConfirmed = checkUrl(['vungle.com', 'liftoff', 'vungle_mraid']);
+  if (vungleConfirmed.length > 0) {
+    confirmedPlatformEvidence.push(...vungleConfirmed);
     platformsDetected.push('Vungle / Liftoff');
+  } else if (sourceTexts.includes('vungle') || sourceTexts.includes('liftoff')) {
+    suspiciousPlatformEvidence.push('源码中存在弱关键词: vungle/liftoff');
+  }
+
+  // Facebook / Meta
+  const fbConfirmed = checkUrl(['facebook.com', 'fbcdn', 'audience_network', 'fbplayable']);
+  if (fbConfirmed.length > 0) {
+    confirmedPlatformEvidence.push(...fbConfirmed);
+    platformsDetected.push('Facebook / Meta');
+  } else if (sourceTexts.includes('facebook') || sourceTexts.includes('audience_network')) {
+    suspiciousPlatformEvidence.push('源码中存在弱关键词: facebook');
+  }
+
+  // TikTok / Pangle
+  const tiktokConfirmed = checkUrl(['pangle', 'tiktok', 'bytedance', 'pangleglobal']);
+  if (tiktokConfirmed.length > 0) {
+    confirmedPlatformEvidence.push(...tiktokConfirmed);
+    platformsDetected.push('TikTok / Pangle');
+  } else if (sourceTexts.includes('pangle') || sourceTexts.includes('tiktok')) {
+    suspiciousPlatformEvidence.push('源码中存在弱关键词: tiktok/pangle');
+  }
+
+  if (platformsDetected.length > 1) {
+    adPlatform = '多平台特征';
+  } else if (platformsDetected.length === 1) {
+    adPlatform = platformsDetected[0];
   }
 
   return {
     adPlatform,
-    platformEvidence,
+    platformSuspicion,
+    confirmedPlatformEvidence,
+    suspiciousPlatformEvidence,
+    ignoredPlatformEvidence,
     platformsDetected
   };
 }

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "试玩广告引擎识别插件 v0.2.6-Construct",
-  "version": "0.2.6",
+  "name": "试玩广告引擎识别 v0.2.7-HF3",
+  "version": "0.2.7.3",
   "description": "一键识别试玩广告（Playable Ad）所使用的 H5 游戏引擎。",
   "permissions": [
     "scripting",

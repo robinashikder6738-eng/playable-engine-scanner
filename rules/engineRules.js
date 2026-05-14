@@ -10,16 +10,17 @@ export const engineRules = [
       let score = 0;
       const evidence = [];
       const combined = (meta.html + meta.inlineScripts.join('\n') + fetchedSources.map(s => s.text).join('\n'));
-      
+      let hasStrong = false;
+
       // Global checks
       if (globals.LUNA || globals.LUNA_PLAYGROUND_BUND || globals.luna || globals.LUNA_PLAYGROUND_BUNDLE) {
-        score += 90;
+        hasStrong = true;
         evidence.push('window.LUNA / LUNA_PLAYGROUND');
       }
 
       // Source checks
       if (/window\.LUNA|LUNA_PLAYGROUND|LUNA_PLAYGROUND_BUNDLE/i.test(meta.html + meta.inlineScripts.join(''))) {
-        score += 80;
+        hasStrong = true;
         evidence.push('源码中检测到 Luna 关键字');
       }
       
@@ -32,15 +33,17 @@ export const engineRules = [
         'Scenes loaded successfully'
       ];
       const foundLogs = logs.filter(log => combined.includes(log));
-      if (foundLogs.length >= 3) {
-        score += 80;
+      if (foundLogs.length > 0) {
+        hasStrong = true;
         evidence.push(`检测到 Luna 典型加载日志 (${foundLogs.length})`);
-      } else if (foundLogs.length > 0) {
-        score += 40;
-        evidence.push(`检测到部分 Luna 加载日志 (${foundLogs.length})`);
       }
 
-      return { score, evidence, name: score >= 80 ? 'Luna' : '疑似 Luna' };
+      if (hasStrong) {
+        score = 100;
+        return { score, evidence, name: 'Luna', confidence: '高' };
+      }
+
+      return { score, evidence, name: '疑似 Luna' };
     }
   },
   {

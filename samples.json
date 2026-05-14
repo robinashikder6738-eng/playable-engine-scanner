@@ -116,5 +116,52 @@
       "C3Runtime"
     ],
     "note": ""
+  },
+  {
+    "id": "sample-platform-applovin-001",
+    "name": "AppLovin 平台样本",
+    "url": "https://xxx.html",
+    "expectedPlatform": "AppLovin",
+    "expectedEngine": "Unknown",
+    "manualEvidence": [
+      "res1.applovin.com",
+      "applovin.com"
+    ],
+    "note": ""
+  },
+  {
+    "id": "sample-platform-mtg-001",
+    "name": "MTG 平台样本",
+    "url": "https://xxx.html",
+    "expectedPlatform": "Mintegral / MTG",
+    "expectedEngine": "Unknown",
+    "manualEvidence": [
+      "mbridge",
+      "mintegral"
+    ],
+    "note": "MTG 当前暂不支持制作"
+  },
+  {
+    "id": "sample-platform-mtgluna-001",
+    "name": "MTG + Luna 规则冲突样本",
+    "url": "https://xxx.html",
+    "expectedPlatform": "Mintegral / MTG",
+    "expectedEngine": "Luna",
+    "manualEvidence": [
+      "mbridge",
+      "window.LUNA"
+    ],
+    "note": "规则冲突，交技术复核"
+  },
+  {
+    "id": "sample-platform-mtgluna-weak-001",
+    "name": "MTG 弱特征 + Luna 样本",
+    "url": "https://xxx.html",
+    "expectedPlatform": "Unknown",
+    "expectedEngine": "Luna",
+    "manualEvidence": [
+      "window.LUNA"
+    ],
+    "note": "源码带有 mintegral 弱关键词但不足以判定为 MTG 平台，不会触发规则冲突"
   }
 ]
