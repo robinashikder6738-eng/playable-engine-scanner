@@ -1,0 +1,39 @@
+{
+  "manifest_version": 3,
+  "name": "试玩广告引擎识别插件 v0.2.6-Construct",
+  "version": "0.2.6",
+  "description": "一键识别试玩广告（Playable Ad）所使用的 H5 游戏引擎。",
+  "permissions": [
+    "scripting",
+    "activeTab",
+    "clipboardWrite",
+    "storage",
+    "tabs",
+    "webNavigation"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "options_page": "options.html",
+  "background": {
+    "service_worker": "service_worker.js",
+    "type": "module"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["injected-probe.js"],
+      "matches": ["<all_urls>"]
+    }
+  ],
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "all_frames": true,
+      "run_at": "document_start"
+    }
+  ]
+}

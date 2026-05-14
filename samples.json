@@ -1,0 +1,120 @@
+[
+  {
+    "id": "sample-pixi-001",
+    "name": "PixiJS 6.5.10 样本",
+    "url": "https://pixijs.com/examples/basic/container",
+    "expectedPlatform": "Unknown",
+    "expectedEngine": "PixiJS",
+    "expectedEngineVersion": "6.5.10",
+    "manualEvidence": [
+      "window.PIXI",
+      "PIXI.VERSION"
+    ],
+    "note": "PixiJS 官方示例"
+  },
+  {
+    "id": "sample-luna-001",
+    "name": "Luna AppLovin 样本",
+    "url": "https://luna-sample.html",
+    "expectedPlatform": "AppLovin",
+    "expectedEngine": "Luna",
+    "manualEvidence": [
+      "window.LUNA_PLAYGROUND_BUND",
+      "Project Settings loaded successfully"
+    ],
+    "note": "Luna 典型样本"
+  },
+  {
+    "id": "sample-phaser-001",
+    "name": "Phaser 样本",
+    "url": "https://xxx.html",
+    "expectedPlatform": "Unknown",
+    "expectedEngine": "Phaser",
+    "expectedEngineVersion": "未知",
+    "manualEvidence": [
+      "F12 VM 搜到 phaser",
+      "Phaser.VERSION"
+    ],
+    "note": ""
+  },
+  {
+    "id": "sample-laya-001",
+    "name": "LayaAir 样本",
+    "url": "https://xxx.html",
+    "expectedPlatform": "Unknown",
+    "expectedEngine": "LayaAir",
+    "expectedEngineVersion": "未知",
+    "manualEvidence": [
+      "F12 VM 搜到 laya",
+      "Laya.stage"
+    ],
+    "note": ""
+  },
+  {
+    "id": "sample-egret-001",
+    "name": "Egret 样本",
+    "url": "https://xxx.html",
+    "expectedPlatform": "Unknown",
+    "expectedEngine": "Egret",
+    "expectedEngineVersion": "未知",
+    "manualEvidence": [
+      "F12 VM 搜到 egret",
+      "egret.runEgret"
+    ],
+    "note": ""
+  },
+  {
+    "id": "sample-playcanvas-001",
+    "name": "PlayCanvas 样本",
+    "url": "https://xxx.html",
+    "expectedPlatform": "Unknown",
+    "expectedEngine": "PlayCanvas",
+    "expectedEngineVersion": "未知",
+    "expectedRenderLibrary": "Unknown",
+    "manualEvidence": [
+      "pc.Application",
+      "playcanvas.js"
+    ],
+    "note": ""
+  },
+  {
+    "id": "sample-three-001",
+    "name": "Three.js 样本",
+    "url": "https://xxx.html",
+    "expectedPlatform": "Unknown",
+    "expectedEngine": "未知 / 高度混淆",
+    "expectedRenderLibrary": "Three.js",
+    "manualEvidence": [
+      "THREE.REVISION",
+      "THREE.WebGLRenderer"
+    ],
+    "note": ""
+  },
+  {
+    "id": "sample-construct2-001",
+    "name": "Construct 2 样本",
+    "url": "https://xxx.html",
+    "expectedPlatform": "Unknown",
+    "expectedEngine": "Construct 2",
+    "expectedEngineVersion": "未知",
+    "manualEvidence": [
+      "F12 VM 搜到 cr.",
+      "c2runtime.js",
+      "cr_getC2Runtime"
+    ],
+    "note": ""
+  },
+  {
+    "id": "sample-construct3-001",
+    "name": "Construct 3 样本",
+    "url": "https://xxx.html",
+    "expectedPlatform": "Unknown",
+    "expectedEngine": "Construct 3",
+    "expectedEngineVersion": "未知",
+    "manualEvidence": [
+      "F12 VM 搜到 c3runtime",
+      "C3Runtime"
+    ],
+    "note": ""
+  }
+]

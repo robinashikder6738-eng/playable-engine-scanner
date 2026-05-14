@@ -1,0 +1,6 @@
+{
+  "name": "Playable Engine Scanner",
+  "description": "Chrome Extension for identifying HTML5 game engines in playable ads.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
