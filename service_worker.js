@@ -477,7 +477,7 @@ async function performProbe(fetchTimeoutMs, scanId, tabId) {
 
   // Probe Globals
   const globals = {};
-  const probeList = ['PIXI', 'cc', '_CCSettings', 'Phaser', 'Laya', 'laya', 'egret', 'pc', 'THREE', 'LUNA', 'LUNA_PLAYGROUND_BUND', 'luna', 'LUNA_PLAYGROUND_BUNDLE', '__PIXI_APP__', '__PIXI_DEVTOOLS__'];
+  const probeList = ['PIXI', 'cc', '_CCSettings', 'Phaser', 'Laya', 'laya', 'egret', 'pc', 'THREE', 'LUNA', 'LUNA_PLAYGROUND_BUND', 'luna', 'LUNA_PLAYGROUND_BUNDLE', '__PIXI_APP__', '__PIXI_DEVTOOLS__', 'cr', 'c3_runtime', 'cr_getC2Runtime', 'cr_createRuntime'];
   probeList.forEach(g => {
     if (window[g]) {
       const obj = window[g];
