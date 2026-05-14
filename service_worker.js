@@ -131,6 +131,7 @@ function aggregateScanResults(analyzedResults) {
       renderLibraryEvidence: [],
       confirmedPlatformEvidence: [],
       suspiciousPlatformEvidence: [],
+      ignoredPlatformEvidence: [],
       manualSearchHits: [],
       conflictWarnings: [],
       recommendation: '未能获取扫描结果。',
@@ -155,6 +156,7 @@ function aggregateScanResults(analyzedResults) {
     renderLibraryEvidence: [],
     confirmedPlatformEvidence: [],
     suspiciousPlatformEvidence: [],
+    ignoredPlatformEvidence: [],
     manualSearchHits: [],
     conflictWarnings: [],
     recommendation: '',
@@ -195,6 +197,9 @@ function aggregateScanResults(analyzedResults) {
     }
     if (res.suspiciousPlatformEvidence && res.suspiciousPlatformEvidence.length > 0) {
       finalResult.suspiciousPlatformEvidence.push(...res.suspiciousPlatformEvidence);
+    }
+    if (res.ignoredPlatformEvidence && res.ignoredPlatformEvidence.length > 0) {
+      finalResult.ignoredPlatformEvidence.push(...res.ignoredPlatformEvidence);
     }
     if (res.platformSuspicion) {
       finalResult.platformSuspicion = res.platformSuspicion;
@@ -262,6 +267,7 @@ function aggregateScanResults(analyzedResults) {
 
   finalResult.confirmedPlatformEvidence = [...new Set(finalResult.confirmedPlatformEvidence)];
   finalResult.suspiciousPlatformEvidence = [...new Set(finalResult.suspiciousPlatformEvidence)];
+  finalResult.ignoredPlatformEvidence = [...new Set(finalResult.ignoredPlatformEvidence)];
 
   if (enginesFound.length > 0) {
     enginesFound.sort((a, b) => {
@@ -360,6 +366,7 @@ function analyzeProbeResult(raw) {
     renderLibraryEvidence: [],
     confirmedPlatformEvidence: [],
     suspiciousPlatformEvidence: [],
+    ignoredPlatformEvidence: [],
     manualSearchHits: [],
     conflictWarnings: raw.warnings || [],
     recommendation: '',
@@ -374,6 +381,7 @@ function analyzeProbeResult(raw) {
   results.platformSuspicion = platformResult.platformSuspicion;
   results.confirmedPlatformEvidence = platformResult.confirmedPlatformEvidence;
   results.suspiciousPlatformEvidence = platformResult.suspiciousPlatformEvidence;
+  results.ignoredPlatformEvidence = platformResult.ignoredPlatformEvidence;
   results.platformsDetected = platformResult.platformsDetected;
   if (platformResult.platformsDetected.length > 1) {
     results.conflictWarnings.push('当前素材同时命中多个广告平台特征，建议技术复核。');

@@ -154,14 +154,84 @@
     "note": "规则冲突，交技术复核"
   },
   {
-    "id": "sample-platform-mtgluna-weak-001",
-    "name": "MTG 弱特征 + Luna 样本",
-    "url": "https://xxx.html",
+    "id": "sample-luna-non-mtg-weak-keywords",
+    "name": "Luna 非 MTG 弱关键词样本",
+    "url": "https://example.com/luna",
     "expectedPlatform": "Unknown",
     "expectedEngine": "Luna",
+    "expectedFinalReviewStatus": "可进入复刻评估",
+    "expectedConfidence": "高",
     "manualEvidence": [
       "window.LUNA"
     ],
-    "note": "源码带有 mintegral 弱关键词但不足以判定为 MTG 平台，不会触发规则冲突"
+    "note": "源码中存在 mintegral 弱关键词但不是 MTG"
+  },
+  {
+    "id": "sample-mtg-confirmed-watermark",
+    "name": "MTG 强确认(水印)样本",
+    "url": "https://example.com/mtg",
+    "expectedPlatform": "Mintegral / MTG",
+    "expectedEngine": "未知 / 高度混淆",
+    "expectedFinalReviewStatus": "暂不支持制作",
+    "expectedConfidence": "低",
+    "manualEvidence": [
+      "可见 DOM 文本包含: Mintegral"
+    ],
+    "note": "如果可见 DOM 出现 Mintegral 则是强特征"
+  },
+  {
+    "id": "sample-mtg-luna-conflict",
+    "name": "MTG + Luna 强冲突样本",
+    "url": "https://mbridge.mintegral.com/playable",
+    "expectedPlatform": "Mintegral / MTG",
+    "expectedEngine": "Luna",
+    "expectedFinalReviewStatus": "规则冲突，交技术复核",
+    "expectedConfidence": "高",
+    "manualEvidence": [
+      "URL 明确包含: mbridge",
+      "window.LUNA"
+    ],
+    "note": "同时命中 MTG 强特征与 Luna 强特征"
+  },
+  {
+    "id": "sample-applovin-luna",
+    "name": "AppLovin + Luna 样本",
+    "url": "https://res1.applovin.com/luna",
+    "expectedPlatform": "AppLovin",
+    "expectedEngine": "Luna",
+    "expectedFinalReviewStatus": "可进入复刻评估",
+    "expectedConfidence": "高",
+    "manualEvidence": [
+      "URL 明确包含: applovin.com",
+      "window.LUNA"
+    ],
+    "note": "其他平台加 Luna 为可评估"
+  },
+  {
+    "id": "sample-applovin-pixi",
+    "name": "AppLovin + PixiJS 样本",
+    "url": "https://res1.applovin.com/pixi",
+    "expectedPlatform": "AppLovin",
+    "expectedEngine": "PixiJS",
+    "expectedFinalReviewStatus": "可进入复刻评估",
+    "expectedConfidence": "高",
+    "manualEvidence": [
+      "URL 明确包含: applovin.com",
+      "PIXI.Application"
+    ],
+    "note": "高置信度 PixiJS 建议评估"
+  },
+  {
+    "id": "sample-platform-keyword-pollution",
+    "name": "源码平台名单弱关键词污染样本",
+    "url": "https://example.com/pollution",
+    "expectedPlatform": "Unknown",
+    "expectedEngine": "未知 / 高度混淆",
+    "expectedFinalReviewStatus": "未识别，交技术复核",
+    "expectedConfidence": "低",
+    "manualEvidence": [
+      "['applovin', 'mintegral', 'ironsource']"
+    ],
+    "note": "平台名单列表只作为可疑弱特征，不会触发多平台冲突，不会触发不可制作"
   }
 ]

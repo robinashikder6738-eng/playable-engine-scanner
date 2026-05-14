@@ -138,6 +138,7 @@ URL：${res.url}
         `置信度：${res.confidence}`,
         `平台强证据：${res.confirmedPlatformEvidence?.join(', ') || '无'}`,
         `平台弱证据：${res.suspiciousPlatformEvidence?.join(', ') || '无'}`,
+        `已忽略平台证据：${res.ignoredPlatformEvidence?.join(', ') || '无'}`,
         `引擎证据：${res.engineEvidence?.join(', ') || '无'}`,
         `渲染库证据：${res.renderLibraryEvidence?.join(', ') || '无'}`,
         `源码命中：${res.manualSearchHits?.join(', ') || '无'}`,
