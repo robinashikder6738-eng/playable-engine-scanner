@@ -20,7 +20,7 @@ body {
   font-size: 14px;
   color: var(--text);
   background-color: var(--bg);
-  width: 380px;
+  width: 410px;
 }
 
 .container {
@@ -28,7 +28,7 @@ body {
   flex-direction: column;
   min-height: 400px;
   max-height: 600px;
-  padding: 16px;
+  padding: 14px;
 }
 
 header {
@@ -175,7 +175,7 @@ h1 {
 main {
   flex: 1;
   overflow-y: auto;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 8px;
@@ -265,6 +265,132 @@ main {
   border-radius: 0 4px 4px 0;
 }
 
+.batch-panel {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  margin-bottom: 12px;
+  background: #ffffff;
+}
+
+.batch-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+#batch-input {
+  width: 100%;
+  min-height: 96px;
+  resize: vertical;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text);
+  background: #f8fafc;
+}
+
+#batch-input:focus {
+  outline: 2px solid #bfdbfe;
+  border-color: var(--primary);
+}
+
+.batch-actions {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  margin: 8px 0;
+}
+
+.batch-actions .primary-btn,
+.batch-actions .secondary-btn {
+  width: 100%;
+  min-height: 30px;
+  padding: 0 6px;
+  font-size: 12px;
+}
+
+.batch-actions .primary-btn {
+  grid-column: 1 / -1;
+  min-height: 36px;
+}
+
+.batch-results {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 170px;
+  overflow-y: auto;
+  margin-top: 8px;
+}
+
+.batch-row {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 7px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #f8fafc;
+}
+
+.batch-row-name {
+  min-width: 0;
+}
+
+.batch-row-title {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.batch-row-url {
+  font-size: 10px;
+  color: var(--text-light);
+  margin-top: 2px;
+}
+
+.batch-engine-cell {
+  max-width: 140px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--primary);
+  text-align: right;
+}
+
+.batch-status-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  background: #e2e8f0;
+  color: #475569;
+}
+
+.batch-row.scanning .batch-status-dot {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.batch-row.complete .batch-status-dot {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.batch-row.failed .batch-status-dot {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
 .recommendation {
   margin-top: 8px;
   padding: 6px 10px;
@@ -286,14 +412,34 @@ footer {
   gap: 8px;
 }
 
+#action-btns {
+  flex-direction: column;
+}
+
+.primary-action-row,
+.utility-action-row {
+  display: grid;
+  gap: 8px;
+}
+
+.primary-action-row {
+  grid-template-columns: minmax(0, 1fr) 84px;
+}
+
+.utility-action-row {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .primary-btn {
-  flex: 2;
   background: var(--primary);
   color: white;
   border: none;
-  padding: 10px;
+  min-height: 40px;
+  padding: 0 14px;
   border-radius: 6px;
   font-weight: 600;
+  font-size: 13px;
+  white-space: nowrap;
   cursor: pointer;
   transition: background 0.2s;
 }
@@ -301,27 +447,44 @@ footer {
 .primary-btn:hover { background: var(--primary-hover); }
 
 .secondary-btn {
-  flex: 1;
   background: white;
   color: var(--text);
   border: 1px solid var(--border);
-  padding: 10px;
+  min-height: 40px;
+  padding: 0 12px;
   border-radius: 6px;
   font-weight: 500;
+  font-size: 13px;
+  white-space: nowrap;
   cursor: pointer;
 }
 
 .secondary-btn:hover { background: #f8fafc; }
-.secondary-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.secondary-btn:disabled {
+  color: #94a3b8;
+  background: #f8fafc;
+  border-color: #e5e7eb;
+  cursor: not-allowed;
+}
+
+.compact-btn {
+  min-height: 30px;
+  padding: 0 8px;
+  font-size: 12px;
+  border-radius: 5px;
+}
 
 .danger-btn {
-  flex: 1;
+  width: 100%;
   background: #ef4444;
   color: white;
   border: none;
-  padding: 10px;
+  min-height: 38px;
+  padding: 0 12px;
   border-radius: 6px;
   font-weight: 600;
+  font-size: 13px;
+  white-space: nowrap;
   cursor: pointer;
 }
 

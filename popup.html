@@ -9,8 +9,8 @@
 <body>
   <div class="container">
     <header>
-      <h1>试玩识别 v0.3.3</h1>
-      <span class="version">规则增强</span>
+      <h1>试玩识别 v0.3.10</h1>
+      <span class="version">界面优化</span>
     </header>
 
     <div id="sample-comparison-box" class="hidden">
@@ -36,6 +36,23 @@
       <button id="re-scan-btn" class="mini-btn">重新扫描</button>
     </div>
 
+    <section id="batch-panel" class="batch-panel hidden">
+      <div class="batch-title-row">
+        <strong>飞书批量扫描</strong>
+        <span id="batch-count" class="small-text">未导入</span>
+      </div>
+      <textarea id="batch-input" placeholder="从飞书复制多行后粘贴到这里，插件会自动识别“试玩链接”列。也支持一行一个 URL。"></textarea>
+      <div class="batch-actions">
+        <button id="batch-start-btn" class="primary-btn">开始批量</button>
+        <button id="batch-copy-engine-btn" class="secondary-btn" disabled>复制引擎列</button>
+        <button id="batch-copy-map-btn" class="secondary-btn" disabled>复制对照表</button>
+        <button id="batch-copy-rows-btn" class="secondary-btn" disabled>复制整行</button>
+        <button id="batch-clear-btn" class="secondary-btn">清空</button>
+      </div>
+      <div id="batch-status" class="small-text">等待粘贴飞书行。</div>
+      <div id="batch-results" class="batch-results"></div>
+    </section>
+
     <main id="results-list">
       <div class="empty-state">
         <p>点击下方按钮开始扫描当前页面。</p>
@@ -44,10 +61,15 @@
 
     <footer>
       <div id="action-btns">
-        <button id="scan-btn" class="primary-btn">开始识别</button>
-        <button id="copy-btn" class="secondary-btn" title="复制飞书审核格式" disabled>复制结果</button>
-        <button id="debug-copy-btn" class="secondary-btn" title="复制完整调试信息" disabled>复制调试</button>
-        <button id="reset-btn" class="secondary-btn" title="清空所有记录">清空</button>
+        <div class="primary-action-row">
+          <button id="scan-btn" class="primary-btn">开始识别</button>
+          <button id="batch-toggle-btn" class="secondary-btn">批量</button>
+        </div>
+        <div class="utility-action-row">
+          <button id="copy-btn" class="secondary-btn compact-btn" title="复制飞书审核格式" disabled>复制结果</button>
+          <button id="debug-copy-btn" class="secondary-btn compact-btn" title="复制完整调试信息" disabled>复制调试</button>
+          <button id="reset-btn" class="secondary-btn compact-btn" title="清空所有记录">清空</button>
+        </div>
       </div>
       <div id="scanning-btns" class="hidden">
         <button id="stop-btn" class="danger-btn">停止扫描/重置</button>

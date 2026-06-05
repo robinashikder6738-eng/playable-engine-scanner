@@ -1,7 +1,7 @@
 {
   "name": "playable-engine-scanner",
   "private": true,
-  "version": "0.3.3",
+  "version": "0.3.10",
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",

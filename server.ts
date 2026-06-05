@@ -8,7 +8,7 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = 3000;
-const APP_VERSION = '0.3.3';
+const APP_VERSION = '0.3.10';
 
 function escapeHtml(value: string) {
   return value

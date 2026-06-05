@@ -1,4 +1,4 @@
-// Background service worker for Playable Engine Scanner v0.3.3
+// Background service worker for Playable Engine Scanner v0.3.10
 // Modular Design: rules/ engineRules.js, platformRules.js, businessRules.js
 
 import { engineRules } from './rules/engineRules.js';
@@ -8,6 +8,22 @@ import { getRecommendations } from './rules/businessRules.js';
 const GLOBAL_SCAN_TIMEOUT = 12000;
 const FRAME_SCAN_TIMEOUT = 3000;
 const FETCH_SOURCE_TIMEOUT = 1200;
+const BATCH_SCAN_STORAGE_KEY = 'batchScanState';
+const BATCH_PAGE_LOAD_TIMEOUT = 18000;
+const BATCH_DETAIL_RESOLVE_TIMEOUT = 15000;
+const BATCH_PLAYABLE_SETTLE_MS = 4200;
+const BATCH_RESCAN_SETTLE_MS = 2600;
+const BATCH_MAX_SCAN_ATTEMPTS = 4;
+const BATCH_PRECISION_ACTIVE_TABS = true;
+const BATCH_SCAN_TIMEOUT = 28000;
+const BATCH_ENGINE_SIGNAL_TIMEOUT = 9500;
+const MAX_FETCHED_SCRIPT_SOURCES = 16;
+
+let activeBatchId = null;
+
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'START_SCAN') {
@@ -18,6 +34,18 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   
   if (request.action === 'RESET_SCAN') {
     resetScanState(request.tabId);
+    sendResponse({ reset: true });
+    return true;
+  }
+
+  if (request.action === 'START_BATCH_SCAN') {
+    startBatchScan(request.rows || [], request.headerCells || []);
+    sendResponse({ started: true });
+    return true;
+  }
+
+  if (request.action === 'RESET_BATCH_SCAN') {
+    resetBatchScanState();
     sendResponse({ reset: true });
     return true;
   }
@@ -72,18 +100,11 @@ async function startGlobalScan(tabId) {
   });
 
   try {
-    const rawResults = await Promise.race([
-      handleScan(tabId, scanId),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('SCAN_TIMEOUT')), GLOBAL_SCAN_TIMEOUT))
-    ]);
+    const finalResult = await scanTabToFinalResult(tabId, scanId);
 
     // Check if this scan is still active (not replaced)
     const latestStateData = await chrome.storage.local.get([key]);
     if (latestStateData[key]?.scanId !== scanId) return;
-
-        // Process raw probe results with rules
-    const analyzedResults = rawResults.map(raw => analyzeProbeResult(raw));
-    const finalResult = aggregateScanResults(analyzedResults);
 
     await updateScanStatus(tabId, 'complete', '扫描完成', {
       lastScanResults: [finalResult],
@@ -115,6 +136,847 @@ async function startGlobalScan(tabId) {
       });
     }
   }
+}
+
+async function scanTabToFinalResult(tabId, scanId, timeoutMs = GLOBAL_SCAN_TIMEOUT) {
+  const rawResults = await Promise.race([
+    handleScan(tabId, scanId),
+    new Promise((_, reject) => setTimeout(() => reject(new Error('SCAN_TIMEOUT')), timeoutMs))
+  ]);
+
+  const analyzedResults = rawResults.map(raw => analyzeProbeResult(raw));
+  return aggregateScanResults(analyzedResults);
+}
+
+async function resetBatchScanState() {
+  activeBatchId = null;
+  await chrome.storage.local.remove(BATCH_SCAN_STORAGE_KEY);
+}
+
+async function updateBatchScanState(patch) {
+  const data = await chrome.storage.local.get([BATCH_SCAN_STORAGE_KEY]);
+  const current = data[BATCH_SCAN_STORAGE_KEY] || {};
+  await chrome.storage.local.set({
+    [BATCH_SCAN_STORAGE_KEY]: {
+      ...current,
+      ...patch
+    }
+  });
+}
+
+async function updateBatchRow(batchId, rowIndex, rowPatch, statePatch = {}) {
+  const data = await chrome.storage.local.get([BATCH_SCAN_STORAGE_KEY]);
+  const current = data[BATCH_SCAN_STORAGE_KEY] || {};
+  if (current.batchId !== batchId) return false;
+
+  const rows = [...(current.rows || [])];
+  rows[rowIndex] = {
+    ...(rows[rowIndex] || {}),
+    ...rowPatch
+  };
+
+  await chrome.storage.local.set({
+    [BATCH_SCAN_STORAGE_KEY]: {
+      ...current,
+      ...statePatch,
+      rows
+    }
+  });
+
+  return true;
+}
+
+async function startBatchScan(rows, headerCells = []) {
+  if (!Array.isArray(rows) || rows.length === 0) {
+    await updateBatchScanState({
+      scanStatus: 'failed',
+      scanProgressText: '未找到可扫描的 URL',
+      rows: [],
+      total: 0,
+      completed: 0,
+      headerCells,
+      errorMessage: '未找到可扫描的 URL'
+    });
+    return;
+  }
+
+  const batchId = `${Date.now()}_batch`;
+  activeBatchId = batchId;
+
+  const normalizedRows = rows.map((row, index) => ({
+    ...row,
+    rowIndex: index + 1,
+    status: 'pending',
+    result: null,
+    error: ''
+  }));
+
+  await chrome.storage.local.set({
+    [BATCH_SCAN_STORAGE_KEY]: {
+      batchId,
+      scanStatus: 'scanning',
+      scanProgressText: `批量扫描准备中: 0/${normalizedRows.length}`,
+      scanStartedAt: new Date().toISOString(),
+      scanFinishedAt: '',
+      total: normalizedRows.length,
+      completed: 0,
+      currentIndex: -1,
+      currentUrl: '',
+      headerCells,
+      rows: normalizedRows,
+      errorMessage: ''
+    }
+  });
+
+  let completed = 0;
+  for (let i = 0; i < normalizedRows.length; i++) {
+    if (activeBatchId !== batchId) return;
+
+    const row = normalizedRows[i];
+    await updateBatchRow(batchId, i, { status: 'scanning', error: '' }, {
+      scanStatus: 'scanning',
+      scanProgressText: `正在扫描 ${i + 1}/${normalizedRows.length}`,
+      currentIndex: i,
+      currentUrl: row.url
+    });
+
+    try {
+      const result = await scanBatchRow(row, batchId, i);
+      completed += 1;
+      await updateBatchRow(batchId, i, { status: 'complete', result, error: '' }, {
+        completed,
+        scanProgressText: `已完成 ${completed}/${normalizedRows.length}`
+      });
+    } catch (err) {
+      completed += 1;
+      await updateBatchRow(batchId, i, {
+        status: 'failed',
+        result: createFailedBatchResult(row, err),
+        error: err.message || '扫描失败'
+      }, {
+        completed,
+        scanProgressText: `已完成 ${completed}/${normalizedRows.length}`
+      });
+    }
+  }
+
+  if (activeBatchId !== batchId) return;
+
+  await updateBatchScanState({
+    scanStatus: 'complete',
+    scanProgressText: `批量扫描完成: ${completed}/${normalizedRows.length}`,
+    currentIndex: -1,
+    currentUrl: '',
+    completed,
+    scanFinishedAt: new Date().toISOString()
+  });
+  activeBatchId = null;
+}
+
+async function scanBatchRow(row, batchId, rowIndex) {
+  if (!isScannableUrl(row.url)) {
+    throw new Error('URL 格式不支持');
+  }
+
+  let tab = null;
+  let resolvedTarget = { url: row.url, method: 'direct' };
+  try {
+    tab = await chrome.tabs.create({ url: row.url, active: BATCH_PRECISION_ACTIVE_TABS });
+    await waitForTabReady(tab.id, BATCH_PAGE_LOAD_TIMEOUT);
+    await delay(900);
+
+    if (activeBatchId !== batchId) {
+      throw new Error('批量扫描已停止');
+    }
+
+    if (isInsightrackrPreplayDetailUrl(row.url)) {
+      await updateBatchRow(batchId, rowIndex, { resolveStatus: 'resolving' }, {
+        scanProgressText: `正在解析详情页 ${rowIndex + 1}`
+      });
+
+      resolvedTarget = await resolvePlayableTarget(tab.id, row.url);
+      if (!resolvedTarget.url || resolvedTarget.url === row.url) {
+        throw new Error('未能从详情页解析真实试玩链接');
+      }
+
+      row.resolvedUrl = resolvedTarget.url;
+      row.resolveMethod = resolvedTarget.method;
+
+      await updateBatchRow(batchId, rowIndex, {
+        resolvedUrl: resolvedTarget.url,
+        resolveMethod: resolvedTarget.method
+      }, {
+        currentUrl: resolvedTarget.url,
+        scanProgressText: `已解析试玩链接，正在扫描 ${rowIndex + 1}`
+      });
+
+      await chrome.tabs.update(tab.id, { url: resolvedTarget.url });
+      if (BATCH_PRECISION_ACTIVE_TABS) {
+        await chrome.tabs.update(tab.id, { active: true }).catch(() => {});
+      }
+      await waitForTabReady(tab.id, BATCH_PAGE_LOAD_TIMEOUT);
+      await delay(900);
+    }
+
+    await updateBatchRow(batchId, rowIndex, {}, {
+      scanProgressText: `等待试玩加载 ${rowIndex + 1}`
+    });
+
+    await waitForBatchPlayableStable(tab.id, BATCH_PLAYABLE_SETTLE_MS);
+    await waitForPreferredBatchEngineSignal(tab.id, BATCH_ENGINE_SIGNAL_TIMEOUT);
+    const finalResult = await scanBatchTabWithRetries(tab.id, batchId, rowIndex, resolvedTarget.url);
+    const latestTab = await chrome.tabs.get(tab.id).catch(() => tab);
+
+    finalResult.inputUrl = row.url;
+    finalResult.resolvedUrl = resolvedTarget.url;
+    finalResult.resolveMethod = resolvedTarget.method;
+    finalResult.url = finalResult.url === 'Unknown' ? resolvedTarget.url : finalResult.url;
+    finalResult.title = latestTab?.title || finalResult.title || row.name || row.url;
+
+    await saveToHistory({
+      url: resolvedTarget.url || row.url,
+      title: finalResult.title,
+      engine: finalResult.engine || '未知',
+      adPlatform: finalResult.adPlatform || '未知',
+      timestamp: new Date().toISOString()
+    });
+
+    return finalResult;
+  } finally {
+    if (tab?.id) {
+      await chrome.tabs.remove(tab.id).catch(() => {});
+      await resetScanState(tab.id);
+    }
+  }
+}
+
+async function scanBatchTabWithRetries(tabId, batchId, rowIndex, scanUrl) {
+  const attempts = [];
+
+  if (scanUrl) {
+    await updateBatchRow(batchId, rowIndex, { scanAttempt: 'static' }, {
+      scanProgressText: `正在静态分析源码 ${rowIndex + 1}`
+    });
+    const staticResult = await scanUrlStaticFinalResult(scanUrl, `${batchId}_${rowIndex + 1}_static`).catch(err => {
+      console.warn('Batch static scan failed:', err.message);
+      return null;
+    });
+    if (staticResult) {
+      attempts.push({
+        attempt: 'static',
+        result: staticResult,
+        score: scoreBatchResultQuality(staticResult) + 4
+      });
+    }
+  }
+
+  for (let attempt = 1; attempt <= BATCH_MAX_SCAN_ATTEMPTS; attempt++) {
+    if (activeBatchId !== batchId) {
+      throw new Error('批量扫描已停止');
+    }
+
+    await updateBatchRow(batchId, rowIndex, { scanAttempt: attempt }, {
+      scanProgressText: `正在探测试玩 ${rowIndex + 1} (${attempt}/${BATCH_MAX_SCAN_ATTEMPTS})`
+    });
+
+    if (attempt > 1) {
+      await waitForBatchPlayableStable(tabId, BATCH_RESCAN_SETTLE_MS);
+    }
+
+    const scanId = `${batchId}_${rowIndex + 1}_${tabId}_${attempt}`;
+    const result = await scanTabToFinalResult(tabId, scanId, BATCH_SCAN_TIMEOUT);
+    attempts.push({
+      attempt,
+      result,
+      score: scoreBatchResultQuality(result)
+    });
+
+    if (attempt >= 2 && !shouldRescanBatchResult(result)) {
+      break;
+    }
+  }
+
+  attempts.sort((a, b) => (b.score - a.score) || (getAttemptOrder(b.attempt) - getAttemptOrder(a.attempt)));
+  const best = attempts[0]?.result || createFailedBatchResult({ url: '' }, new Error('未能获取扫描结果'));
+  best.batchScanAttempts = attempts.map(item => ({
+    attempt: item.attempt,
+    engine: item.result?.engine || '未知',
+    engineVersion: item.result?.engineVersion || '未知',
+    confidence: item.result?.confidence || '未知',
+    score: item.score
+  }));
+
+  if (attempts.length > 1) {
+    best.conflictWarnings = [
+      ...(best.conflictWarnings || []),
+      `批量模式已等待并复扫 ${attempts.length} 次，最终采用证据质量最高的结果。`
+    ];
+    best.conflictWarnings = [...new Set(best.conflictWarnings)];
+  }
+
+  return best;
+}
+
+function getAttemptOrder(attempt) {
+  if (typeof attempt === 'number') return attempt;
+  if (attempt === 'static') return 0;
+  return -1;
+}
+
+async function scanUrlStaticFinalResult(url, scanId) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
+  const resp = await fetch(url, { signal: controller.signal, credentials: 'include' });
+  clearTimeout(timer);
+
+  if (!resp.ok) {
+    throw new Error(`STATIC_FETCH_${resp.status}`);
+  }
+
+  const html = await resp.text();
+  const inlineScripts = extractInlineScripts(html);
+  const externalScripts = extractExternalScripts(html, url);
+  const links = extractLinks(html, url);
+  const fetchedSources = await fetchScriptSources(externalScripts, MAX_FETCHED_SCRIPT_SOURCES, 3200);
+
+  const raw = {
+    scanId,
+    tabId: 0,
+    isFrame: false,
+    frameUrl: url,
+    meta: {
+      url,
+      html: html.substring(0, 80000),
+      inlineScripts,
+      externalScripts,
+      links,
+      resources: [url, ...externalScripts, ...links],
+      canvasCount: (html.match(/<canvas\b/gi) || []).length,
+      visibleText: []
+    },
+    globals: {},
+    fetchedSources,
+    warnings: ['批量静态源码分析结果']
+  };
+
+  const analyzed = analyzeProbeResult(raw);
+  const finalResult = aggregateScanResults([analyzed]);
+  finalResult.staticSourceScan = true;
+  finalResult.conflictWarnings = [
+    ...(finalResult.conflictWarnings || []),
+    '批量模式已合并静态源码分析，用于降低 runtime 未初始化导致的误判。'
+  ];
+  finalResult.conflictWarnings = [...new Set(finalResult.conflictWarnings)];
+  return finalResult;
+}
+
+function extractInlineScripts(html) {
+  const scripts = [];
+  const re = /<script\b(?![^>]*\bsrc\s*=)[^>]*>([\s\S]*?)<\/script>/gi;
+  let match;
+  while ((match = re.exec(html))) {
+    if (match[1]) scripts.push(match[1].substring(0, 120000));
+  }
+  return scripts;
+}
+
+function extractExternalScripts(html, baseUrl) {
+  const scripts = [];
+  const re = /<script\b[^>]*\bsrc\s*=\s*["']?([^"'\s>]+)["']?[^>]*>/gi;
+  let match;
+  while ((match = re.exec(html))) {
+    const absolute = toAbsoluteUrl(match[1], baseUrl);
+    if (absolute) scripts.push(absolute);
+  }
+  return [...new Set(scripts)];
+}
+
+function extractLinks(html, baseUrl) {
+  const links = [];
+  const re = /<(?:link|img|iframe|source|video|audio|embed|object)\b[^>]*\b(?:href|src|data)\s*=\s*["']?([^"'\s>]+)["']?[^>]*>/gi;
+  let match;
+  while ((match = re.exec(html))) {
+    const absolute = toAbsoluteUrl(match[1], baseUrl);
+    if (absolute) links.push(absolute);
+  }
+  return [...new Set(links)];
+}
+
+function toAbsoluteUrl(value, baseUrl) {
+  if (!value || value.startsWith('data:') || value.startsWith('blob:') || value.startsWith('javascript:')) return '';
+  try {
+    return new URL(value, baseUrl).href;
+  } catch (e) {
+    return '';
+  }
+}
+
+async function fetchScriptSources(scriptUrls, limit, timeoutMs) {
+  const targets = scriptUrls
+    .filter(url => /^https?:\/\//i.test(url))
+    .slice(0, limit);
+
+  const settled = await Promise.allSettled(targets.map(async src => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const resp = await fetch(src, { signal: controller.signal, credentials: 'include' });
+      if (!resp.ok) return null;
+      const text = await resp.text();
+      return { src, text: text.substring(0, 180000) };
+    } finally {
+      clearTimeout(timer);
+    }
+  }));
+
+  return settled
+    .filter(item => item.status === 'fulfilled' && item.value)
+    .map(item => item.value);
+}
+
+function shouldRescanBatchResult(result) {
+  if (!result) return true;
+  const engine = String(result.engine || '');
+  const version = String(result.engineVersion || '');
+  if (!engine || engine.includes('未知') || engine.includes('疑似')) return true;
+  if (result.confidence === '低') return true;
+  if (version.includes('未知') && ['Cocos Creator', 'PixiJS', 'Phaser', 'LayaAir', 'Egret', 'PlayCanvas'].includes(engine)) return true;
+  if (engine === 'PlayCanvas' && hasLunaBatchHint(result)) return true;
+  return false;
+}
+
+function scoreBatchResultQuality(result) {
+  if (!result) return 0;
+  let score = 0;
+  const engine = String(result.engine || '');
+  const version = String(result.engineVersion || '');
+
+  if (engine && !engine.includes('未知')) score += 25;
+  if (engine && !engine.includes('疑似')) score += 10;
+  if (engine === 'Luna') score += 80;
+  if (engine === 'PlayCanvas' && hasLunaBatchHint(result)) score -= 45;
+  if (result.confidence === '高') score += 45;
+  else if (result.confidence === '中') score += 28;
+  else if (result.confidence === '低') score += 8;
+  if (version && !version.includes('未知')) score += 25;
+  if (result.adPlatform && result.adPlatform !== 'Unknown') score += 8;
+  score += Math.min((result.engineEvidence || []).length * 3, 18);
+  score += Math.min((result.confirmedPlatformEvidence || []).length * 2, 10);
+  if (result.finalReviewStatus === '可进入复刻评估') score += 5;
+  if (result.finalReviewStatus === '扫描失败，建议人工复核') score -= 30;
+  return score;
+}
+
+function hasLunaBatchHint(result) {
+  const text = [
+    ...(result.engineEvidence || []),
+    ...(result.manualSearchHits || []),
+    ...(result.conflictWarnings || []),
+    ...(result.frameSources || []).map(item => `${item.url || ''} ${item.engine || ''}`)
+  ].join('\n');
+
+  return /luna|LUNA_PLAYGROUND|Bundle chain loaded|Project Settings loaded/i.test(text);
+}
+
+async function waitForBatchPlayableStable(tabId, minWaitMs) {
+  await delay(minWaitMs);
+
+  const startedAt = Date.now();
+  let lastSignature = '';
+  let stableSince = Date.now();
+
+  while (Date.now() - startedAt < 7000) {
+    const state = await getBatchPageProbeState(tabId);
+    const signature = `${state.readyState}|${state.canvasCount}|${state.scriptCount}|${state.resourceCount}|${state.bodyLength}`;
+
+    if (signature === lastSignature) {
+      if (state.readyState === 'complete' && Date.now() - stableSince >= 900) {
+        return state;
+      }
+    } else {
+      lastSignature = signature;
+      stableSince = Date.now();
+    }
+
+    if (state.readyState === 'complete' && (state.canvasCount > 0 || Date.now() - startedAt > 3500) && Date.now() - stableSince >= 600) {
+      return state;
+    }
+
+    await delay(500);
+  }
+
+  return getBatchPageProbeState(tabId);
+}
+
+async function waitForPreferredBatchEngineSignal(tabId, timeoutMs) {
+  const startedAt = Date.now();
+  let lastState = null;
+
+  while (Date.now() - startedAt < timeoutMs) {
+    const state = await getBatchEngineSignalState(tabId);
+    lastState = state;
+
+    if (state.luna || state.cocos || state.pixi || state.phaser || state.laya || state.egret) {
+      return state;
+    }
+
+    await delay(700);
+  }
+
+  return lastState || {};
+}
+
+async function getBatchEngineSignalState(tabId) {
+  try {
+    const result = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => {
+        const html = document.documentElement?.outerHTML?.slice(0, 120000) || '';
+        const scriptSrc = Array.from(document.querySelectorAll('script[src]')).map(s => s.src).join('\n');
+        const text = `${html}\n${scriptSrc}`;
+        return {
+          readyState: document.readyState,
+          canvasCount: document.querySelectorAll('canvas').length,
+          luna: !!(window.LUNA || window.LUNA_PLAYGROUND_BUND || window.LUNA_PLAYGROUND_BUNDLE) ||
+            /\bLUNA_PLAYGROUND(?:_BUND|_BUNDLE)?\b|Project Settings loaded successfully|Bundle chain loaded successfully/i.test(text),
+          cocos: !!(window.cc?.game || window.cc?.director || window.cc?.ENGINE_VERSION || window.CocosEngine || window._CCSettings) ||
+            /cc\.ENGINE_VERSION|Cocos Creator|cocos2d-js/i.test(text),
+          pixi: !!(window.PIXI?.VERSION || window.PIXI?.Application || window.__PIXI_APP__) ||
+            /PIXI\.VERSION|PIXI\.Application|pixi\.js|@pixi/i.test(text),
+          phaser: !!(window.Phaser?.Game || window.Phaser?.VERSION) ||
+            /Phaser\.Game|Phaser\s+v?\d+\.\d+\.\d+|phaser(?:\.min)?\.js/i.test(text),
+          laya: !!(window.Laya?.stage || window.Laya?.version || window.laya?.utils) ||
+            /Laya\.stage|LayaAir|laya(?:\.core)?\.js/i.test(text),
+          egret: !!(window.egret?.runEgret || window.egret?.MainContext) ||
+            /egret\.runEgret|Egret Engine|egret(?:\.min|\.web)?\.js/i.test(text),
+          playcanvas: !!(window.pc?.Application || window.pc?.Entity) ||
+            /pc\.Application|PlayCanvas|playcanvas/i.test(text)
+        };
+      },
+      world: 'MAIN'
+    });
+
+    return result?.[0]?.result || {};
+  } catch (e) {
+    return {};
+  }
+}
+
+async function getBatchPageProbeState(tabId) {
+  try {
+    const result = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => ({
+        readyState: document.readyState,
+        canvasCount: document.querySelectorAll('canvas').length,
+        scriptCount: document.querySelectorAll('script').length,
+        bodyLength: document.body?.innerText?.length || 0,
+        resourceCount: typeof performance !== 'undefined' ? performance.getEntriesByType('resource').length : 0
+      }),
+      world: 'MAIN'
+    });
+
+    return result?.[0]?.result || {};
+  } catch (e) {
+    return {
+      readyState: 'unknown',
+      canvasCount: 0,
+      scriptCount: 0,
+      bodyLength: 0,
+      resourceCount: 0
+    };
+  }
+}
+
+function createFailedBatchResult(row, err) {
+  return {
+    adPlatform: 'Unknown',
+    engine: '未知 / 高度混淆',
+    engineVersion: '未知',
+    renderLibrary: 'Unknown',
+    renderLibraryVersion: '未知',
+    confidence: '低',
+    finalReviewStatus: '扫描失败，建议人工复核',
+    confirmedPlatformEvidence: [],
+    suspiciousPlatformEvidence: [],
+    ignoredPlatformEvidence: [],
+    engineEvidence: [],
+    renderLibraryEvidence: [],
+    manualSearchHits: [],
+    conflictWarnings: [err.message || '扫描失败'],
+    recommendation: '批量扫描该 URL 失败，建议手动打开页面后单页扫描。',
+    url: row.url || 'Unknown',
+    inputUrl: row.url || '',
+    resolvedUrl: row.resolvedUrl || '',
+    title: row.name || row.url || '',
+    timestamp: new Date().toLocaleString(),
+    frameSources: []
+  };
+}
+
+function isInsightrackrPreplayDetailUrl(url) {
+  try {
+    const parsed = new URL(url);
+    return parsed.hostname.includes('insightrackr.com') && parsed.pathname.includes('/creative/preplay/detail/');
+  } catch (e) {
+    return false;
+  }
+}
+
+async function resolvePlayableTarget(tabId, sourceUrl) {
+  if (!isInsightrackrPreplayDetailUrl(sourceUrl)) {
+    return { url: sourceUrl, method: 'direct' };
+  }
+
+  const startedAt = Date.now();
+  let lastResolved = null;
+
+  while (Date.now() - startedAt < BATCH_DETAIL_RESOLVE_TIMEOUT) {
+    try {
+      const result = await Promise.race([
+        chrome.scripting.executeScript({
+          target: { tabId },
+          func: resolvePlayableUrlInPage,
+          world: 'MAIN',
+          args: [sourceUrl]
+        }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('DETAIL_RESOLVE_ATTEMPT_TIMEOUT')), 5000))
+      ]);
+
+      const resolved = result?.[0]?.result;
+      if (resolved?.url) {
+        lastResolved = resolved;
+      }
+      if (resolved?.url && isLikelyPlayableHtmlUrl(resolved.url, sourceUrl)) {
+        return resolved;
+      }
+    } catch (e) {
+      console.warn('Detail resolver attempt failed:', e.message);
+    }
+
+    const tab = await chrome.tabs.get(tabId).catch(() => null);
+    if (tab?.url && isLikelyPlayableHtmlUrl(tab.url, sourceUrl)) {
+      return { url: tab.url, method: 'detail-navigation' };
+    }
+
+    await delay(900);
+  }
+
+  if (lastResolved?.url && isLikelyPlayableHtmlUrl(lastResolved.url, sourceUrl)) return lastResolved;
+  return { url: sourceUrl, method: 'detail-unresolved' };
+}
+
+function isLikelyPlayableHtmlUrl(url, sourceUrl = '') {
+  try {
+    const parsed = new URL(url);
+    const source = sourceUrl ? new URL(sourceUrl) : null;
+    if (source && parsed.href === source.href) return false;
+    if (!/^https?:$/.test(parsed.protocol)) return false;
+    if (parsed.hostname.includes('insightrackr.com') && parsed.pathname.includes('/creative/preplay/detail/')) return false;
+    return /\.html?$/i.test(parsed.pathname) || /\/htmls\/\d{4}\//i.test(parsed.pathname) || /x_html_[a-f0-9]{8,}/i.test(parsed.href);
+  } catch (e) {
+    return false;
+  }
+}
+
+function isScannableUrl(url) {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch (e) {
+    return false;
+  }
+}
+
+async function resolvePlayableUrlInPage(sourceUrl) {
+  const source = new URL(sourceUrl);
+  const detailId = (source.pathname.match(/\/detail\/([^/?#]+)/i) || [])[1] || '';
+  const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+  const normalizeText = (value) => String(value || '')
+    .replace(/\\u002F/gi, '/')
+    .replace(/\\\//g, '/')
+    .replace(/&amp;/g, '&')
+    .replace(/&#x3D;/g, '=')
+    .replace(/&#61;/g, '=');
+
+  const cleanupUrl = (value) => {
+    let url = normalizeText(value).trim();
+    url = url.replace(/^[("'`]+|[)"'`,;]+$/g, '');
+    try {
+      url = decodeURIComponent(url);
+    } catch (e) {}
+    return url;
+  };
+
+  const isPlayable = (value) => {
+    try {
+      const url = cleanupUrl(value);
+      const parsed = new URL(url);
+      if (!/^https?:$/.test(parsed.protocol)) return false;
+      if (parsed.href === source.href) return false;
+      if (parsed.hostname.includes('insightrackr.com') && parsed.pathname.includes('/creative/preplay/detail/')) return false;
+      return /\.html?$/i.test(parsed.pathname) ||
+        /\/htmls\/\d{4}\//i.test(parsed.pathname) ||
+        /x_html_[a-f0-9]{8,}/i.test(parsed.href) ||
+        (detailId && parsed.href.includes(detailId) && !parsed.hostname.includes('insightrackr.com'));
+    } catch (e) {
+      return false;
+    }
+  };
+
+  const scoreUrl = (value) => {
+    const url = cleanupUrl(value);
+    let score = 0;
+    if (detailId && url.includes(detailId)) score += 100;
+    if (/x_html_[a-f0-9]{8,}/i.test(url)) score += 80;
+    if (/\/htmls\/\d{4}\//i.test(url)) score += 60;
+    if (/adinsights/i.test(url)) score += 40;
+    if (/oss-accelerate\.aliyuncs\.com/i.test(url)) score += 30;
+    if (/Expires=|OSSAccessKeyId=|Signature=/i.test(url)) score += 20;
+    return score;
+  };
+
+  const findUrlInText = (text) => {
+    const normalized = normalizeText(text);
+    const matches = normalized.match(/https?:\/\/[^\s"'<>\\]+/gi) || [];
+    const candidates = matches
+      .map(cleanupUrl)
+      .filter(isPlayable)
+      .sort((a, b) => scoreUrl(b) - scoreUrl(a));
+    return candidates[0] || '';
+  };
+
+  const readDomCandidates = () => {
+    const chunks = [];
+    const attributes = ['href', 'src', 'data-url', 'data-href', 'data-src', 'data-clipboard-text', 'data-value', 'title', 'aria-label'];
+
+    document.querySelectorAll('a, iframe, frame, embed, object, video, source, [href], [src], [data-url], [data-href], [data-clipboard-text]').forEach(el => {
+      attributes.forEach(attr => {
+        const value = el.getAttribute?.(attr);
+        if (value) chunks.push(value);
+      });
+    });
+
+    document.querySelectorAll('script:not([src])').forEach(script => {
+      if (script.textContent) chunks.push(script.textContent);
+    });
+
+    chunks.push(document.documentElement?.outerHTML || '');
+
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        chunks.push(key, localStorage.getItem(key));
+      }
+    } catch (e) {}
+
+    try {
+      for (let i = 0; i < sessionStorage.length; i++) {
+        const key = sessionStorage.key(i);
+        chunks.push(key, sessionStorage.getItem(key));
+      }
+    } catch (e) {}
+
+    try {
+      performance.getEntriesByType('resource').forEach(entry => chunks.push(entry.name));
+    } catch (e) {}
+
+    return findUrlInText(chunks.join('\n'));
+  };
+
+  const domUrl = readDomCandidates();
+  if (domUrl) return { url: domUrl, method: 'detail-dom' };
+
+  const resourceUrls = [];
+  try {
+    performance.getEntriesByType('resource').forEach(entry => {
+      const name = entry.name || '';
+      const isAsset = /\.(?:js|css|png|jpg|jpeg|gif|webp|svg|ico|woff2?|ttf)(?:[?#]|$)/i.test(name);
+      if (!isAsset && (/preplay|creative|detail|material/i.test(name) || (detailId && name.includes(detailId)))) {
+        resourceUrls.push(name);
+      }
+    });
+  } catch (e) {}
+
+  for (const apiUrl of [...new Set(resourceUrls)].slice(0, 20)) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 1800);
+      const resp = await fetch(apiUrl, { credentials: 'include', signal: controller.signal });
+      clearTimeout(timer);
+      if (!resp.ok) continue;
+      const text = await resp.text();
+      const apiMatch = findUrlInText(text);
+      if (apiMatch) return { url: apiMatch, method: 'detail-api' };
+    } catch (e) {}
+  }
+
+  const openedUrls = [];
+  const originalOpen = window.open;
+
+  try {
+    window.open = (url) => {
+      if (url) openedUrls.push(String(url));
+      return null;
+    };
+  } catch (e) {}
+
+  const clickTargets = Array.from(document.querySelectorAll('button, a, [role="button"], span, div'))
+    .filter(el => {
+      const text = (el.textContent || '').replace(/\s/g, '');
+      if (!/(跳转|预览|打开试玩|查看试玩)/.test(text)) return false;
+      const rect = el.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0;
+    })
+    .slice(0, 12);
+
+  for (const el of clickTargets) {
+    try {
+      el.click();
+      await sleep(450);
+      const clickMatch = findUrlInText(openedUrls.concat(window.location.href).join('\n'));
+      if (clickMatch) {
+        return { url: clickMatch, method: 'detail-click' };
+      }
+    } catch (e) {}
+  }
+
+  try {
+    window.open = originalOpen;
+  } catch (e) {}
+
+  const finalDomUrl = readDomCandidates();
+  if (finalDomUrl) return { url: finalDomUrl, method: 'detail-final-dom' };
+
+  return { url: '', method: 'detail-unresolved' };
+}
+
+function waitForTabReady(tabId, timeoutMs) {
+  return new Promise(resolve => {
+    let settled = false;
+    let timer = null;
+
+    const cleanup = () => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      chrome.tabs.onUpdated.removeListener(listener);
+      resolve();
+    };
+
+    const listener = (updatedTabId, changeInfo) => {
+      if (updatedTabId === tabId && changeInfo.status === 'complete') {
+        cleanup();
+      }
+    };
+
+    chrome.tabs.onUpdated.addListener(listener);
+    timer = setTimeout(cleanup, timeoutMs);
+    chrome.tabs.get(tabId).then(tab => {
+      if (tab.status === 'complete') cleanup();
+    }).catch(cleanup);
+  });
 }
 
 function aggregateScanResults(analyzedResults) {
@@ -612,21 +1474,23 @@ async function performProbe(fetchTimeoutMs, scanId, tabId) {
     }
   } catch (e) {}
 
-  const fetchedSources = [];
   const scriptLoadWarnings = [];
-  
-  for (const src of meta.externalScripts) {
+  const fetchedSources = (await Promise.allSettled(meta.externalScripts.slice(0, 16).map(async src => {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), fetchTimeoutMs);
     try {
-      const controller = new AbortController();
-      const id = setTimeout(() => controller.abort(), fetchTimeoutMs);
       const resp = await fetch(src, { signal: controller.signal });
+      if (!resp.ok) return null;
+      const text = await resp.text();
+      return { src, text: text.substring(0, 140000) };
+    } catch (e) {
+      return null;
+    } finally {
       clearTimeout(id);
-      if (resp.ok) {
-        const text = await resp.text();
-        fetchedSources.push({ src, text: text.substring(0, 100000) });
-      }
-    } catch (e) {}
-  }
+    }
+  })))
+    .filter(item => item.status === 'fulfilled' && item.value)
+    .map(item => item.value);
 
   return {
     scanId,

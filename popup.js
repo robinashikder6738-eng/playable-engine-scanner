@@ -1,8 +1,9 @@
-// popup.js v0.3.3
+// popup.js v0.3.10
 // Manages UI polling and communication with the background scanner
 
 document.addEventListener('DOMContentLoaded', async () => {
   const scanBtn = document.getElementById('scan-btn');
+  const batchToggleBtn = document.getElementById('batch-toggle-btn');
   const copyBtn = document.getElementById('copy-btn');
   const debugCopyBtn = document.getElementById('debug-copy-btn');
   const resetBtn = document.getElementById('reset-btn');
@@ -21,9 +22,20 @@ document.addEventListener('DOMContentLoaded', async () => {
   const tabTitleDiv = document.getElementById('tab-title');
   const tabIdDiv = document.getElementById('tab-id');
   const sampleBox = document.getElementById('sample-comparison-box');
+  const batchPanel = document.getElementById('batch-panel');
+  const batchInput = document.getElementById('batch-input');
+  const batchStartBtn = document.getElementById('batch-start-btn');
+  const batchCopyEngineBtn = document.getElementById('batch-copy-engine-btn');
+  const batchCopyMapBtn = document.getElementById('batch-copy-map-btn');
+  const batchCopyRowsBtn = document.getElementById('batch-copy-rows-btn');
+  const batchClearBtn = document.getElementById('batch-clear-btn');
+  const batchStatus = document.getElementById('batch-status');
+  const batchResults = document.getElementById('batch-results');
+  const batchCount = document.getElementById('batch-count');
 
   let currentResults = [];
   let currentScanData = {};
+  let currentBatchState = {};
   let samples = [];
   let pollInterval = null;
 
@@ -75,6 +87,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   scanBtn.addEventListener('click', triggerScan);
   reScanBtn.addEventListener('click', triggerScan);
+  batchToggleBtn.addEventListener('click', () => {
+    batchPanel.classList.toggle('hidden');
+    renderBatchState(currentBatchState);
+  });
 
   resetBtn.addEventListener('click', () => {
     if (activeTabId) chrome.runtime.sendMessage({ action: 'RESET_SCAN', tabId: activeTabId });
@@ -82,6 +98,49 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   stopBtn.addEventListener('click', () => {
     if (activeTabId) chrome.runtime.sendMessage({ action: 'RESET_SCAN', tabId: activeTabId });
+  });
+
+  batchInput.addEventListener('input', () => {
+    const parsed = parseBatchInput(batchInput.value);
+    batchCount.textContent = parsed.rows.length ? `${parsed.rows.length} 条待扫` : '未导入';
+  });
+
+  batchStartBtn.addEventListener('click', async () => {
+    const parsed = parseBatchInput(batchInput.value);
+    if (parsed.rows.length === 0) {
+      alert('未识别到可扫描的试玩链接。请从飞书复制包含“试玩链接”的行，或一行粘贴一个 URL。');
+      return;
+    }
+
+    batchPanel.classList.remove('hidden');
+    batchStatus.textContent = `已导入 ${parsed.rows.length} 条，准备开始扫描...`;
+    await chrome.runtime.sendMessage({
+      action: 'START_BATCH_SCAN',
+      rows: parsed.rows,
+      headerCells: parsed.headerCells
+    });
+  });
+
+  batchCopyEngineBtn.addEventListener('click', () => {
+    const text = buildBatchEngineColumn(currentBatchState);
+    copyBatchText(text, batchCopyEngineBtn);
+  });
+
+  batchCopyMapBtn.addEventListener('click', () => {
+    const text = buildBatchMapText(currentBatchState);
+    copyBatchText(text, batchCopyMapBtn);
+  });
+
+  batchCopyRowsBtn.addEventListener('click', () => {
+    const text = buildBatchRowsText(currentBatchState);
+    copyBatchText(text, batchCopyRowsBtn);
+  });
+
+  batchClearBtn.addEventListener('click', async () => {
+    batchInput.value = '';
+    currentBatchState = {};
+    await chrome.runtime.sendMessage({ action: 'RESET_BATCH_SCAN' });
+    renderBatchState({});
   });
 
   copyBtn.addEventListener('click', () => {
@@ -183,6 +242,13 @@ URL：${res.url}
     currentScanData = scanState;
     renderUI(scanState);
     checkSampleMatch(scanState);
+    await loadBatchStateFromStorage();
+  }
+
+  async function loadBatchStateFromStorage() {
+    const data = await chrome.storage.local.get(['batchScanState']);
+    currentBatchState = data.batchScanState || {};
+    renderBatchState(currentBatchState);
   }
 
   function checkSampleMatch(data) {
@@ -234,6 +300,313 @@ URL：${res.url}
       ${!isCorrect ? '<div class="warning-box" style="margin-top:8px;">识别结果与人工样本不一致，建议修正规则。</div>' : ''}
     `;
     sampleBox.classList.remove('hidden');
+  }
+
+  function parseBatchInput(text) {
+    const lines = text
+      .split(/\r?\n/)
+      .filter(line => line.trim());
+
+    const result = {
+      headerCells: [],
+      rows: []
+    };
+
+    let headerCells = [];
+    lines.forEach((line, lineIndex) => {
+      const cells = line.includes('\t') ? line.split('\t').map(cell => cell.trim()) : [line.trim()];
+      const urlInfo = findUrlInCells(cells);
+      const looksLikeHeader = lineIndex === 0 && !urlInfo && cells.some(cell => {
+        const normalized = cell.replace(/\s/g, '');
+        return normalized === '试玩链接' || normalized === '引擎' || normalized === '试玩名称';
+      });
+
+      if (looksLikeHeader) {
+        headerCells = cells;
+        result.headerCells = cells;
+        return;
+      }
+
+      if (!urlInfo) return;
+
+      const engineColumnIndex = getEngineColumnIndex(cells, headerCells);
+      const nameColumnIndex = getColumnIndex(headerCells, ['试玩名称', '名称']);
+      const productColumnIndex = getColumnIndex(headerCells, ['产品']);
+      const scheduleColumnIndex = getColumnIndex(headerCells, ['排期']);
+      const inferredName = nameColumnIndex >= 0 ? (cells[nameColumnIndex] || '') : inferBatchRowName(cells, urlInfo.index);
+
+      result.rows.push({
+        rowIndex: result.rows.length + 1,
+        cells,
+        url: urlInfo.url,
+        urlColumnIndex: urlInfo.index,
+        engineColumnIndex,
+        name: inferredName,
+        product: productColumnIndex >= 0 ? (cells[productColumnIndex] || '') : '',
+        schedule: scheduleColumnIndex >= 0 ? (cells[scheduleColumnIndex] || '') : ''
+      });
+    });
+
+    return result;
+  }
+
+  function findUrlInCells(cells) {
+    for (let i = 0; i < cells.length; i++) {
+      const match = cells[i].match(/https?:\/\/[^\s\t]+/i);
+      if (match) {
+        return { index: i, url: match[0] };
+      }
+    }
+    return null;
+  }
+
+  function getColumnIndex(headerCells, names) {
+    if (!headerCells || headerCells.length === 0) return -1;
+    return headerCells.findIndex(cell => names.includes(cell.replace(/\s/g, '')));
+  }
+
+  function getEngineColumnIndex(cells, headerCells) {
+    const headerIndex = getColumnIndex(headerCells, ['引擎']);
+    if (headerIndex >= 0) return headerIndex;
+    if (cells.length >= 6) return 5;
+    return cells.length;
+  }
+
+  function inferBatchRowName(cells, urlColumnIndex) {
+    const firstCell = cells[0] || '';
+    if (firstCell && !isUrlLike(firstCell) && !looksLikeExistingEngine(firstCell) && !looksLikeNonNameCell(firstCell)) {
+      return firstCell;
+    }
+
+    const candidates = cells
+      .map((cell, index) => ({ cell: cell.trim(), index }))
+      .filter(item => item.cell && item.index !== urlColumnIndex)
+      .filter(item => !isUrlLike(item.cell))
+      .filter(item => !looksLikeExistingEngine(item.cell))
+      .filter(item => !looksLikeNonNameCell(item.cell));
+
+    const chineseCandidate = candidates.find(item => /[\u4e00-\u9fa5]/.test(item.cell));
+    return (chineseCandidate || candidates[0])?.cell || '';
+  }
+
+  function isUrlLike(value) {
+    return /^https?:\/\//i.test(String(value || '').trim());
+  }
+
+  function looksLikeExistingEngine(value) {
+    return /(Cocos|Creator|Pixi|PixiJS|Phaser|Laya|Egret|Luna|Construct|PlayCanvas|Three\.js|未知|扫描失败)/i.test(String(value || ''));
+  }
+
+  function looksLikeNonNameCell(value) {
+    const text = String(value || '').trim();
+    return !text ||
+      /^wx[a-z0-9]{8,}$/i.test(text) ||
+      /^[a-z]{2,5}$/i.test(text) ||
+      /^\d{3,8}$/.test(text) ||
+      /^20\d{2}[-/年]?\d{1,2}/.test(text);
+  }
+
+  function renderBatchState(state = {}) {
+    const rows = state.rows || [];
+    const total = state.total || rows.length;
+    const completed = state.completed || rows.filter(row => row.status === 'complete' || row.status === 'failed').length;
+    const parsedRows = parseBatchInput(batchInput.value).rows.length;
+    const hasFinishedRows = rows.some(row => row.status === 'complete' || row.status === 'failed');
+    const isScanning = state.scanStatus === 'scanning';
+
+    batchCount.textContent = total ? `${completed}/${total}` : (parsedRows ? `${parsedRows} 条待扫` : '未导入');
+    batchStatus.textContent = state.scanProgressText || (parsedRows ? `已识别 ${parsedRows} 条待扫链接。` : '等待粘贴飞书行。');
+    batchStartBtn.disabled = isScanning;
+    batchCopyEngineBtn.disabled = !hasFinishedRows;
+    batchCopyMapBtn.disabled = !hasFinishedRows;
+    batchCopyRowsBtn.disabled = !hasFinishedRows;
+
+    if (rows.length === 0) {
+      batchResults.innerHTML = '';
+      return;
+    }
+
+    batchResults.innerHTML = rows.map(row => {
+      const status = row.status || 'pending';
+      const statusText = getBatchStatusText(status);
+      const engineCell = row.status === 'failed' ? '扫描失败' : (row.result ? formatEngineCell(row.result) : '等待中');
+      const title = getBatchRowTitle(row);
+      const meta = getBatchRowMeta(row, statusText);
+      const rowNumber = row.rowIndex || '';
+      const tooltip = getBatchRowTooltip(row);
+
+      return `
+        <div class="batch-row ${escapeHtml(status)}">
+          <span class="batch-status-dot" title="${escapeHtml(statusText)}">${escapeHtml(rowNumber)}</span>
+          <div class="batch-row-name">
+            <div class="batch-row-title truncate" title="${escapeHtml(tooltip)}">${escapeHtml(title)}</div>
+            <div class="batch-row-url truncate" title="${escapeHtml(tooltip)}">${escapeHtml(meta)}</div>
+          </div>
+          <div class="batch-engine-cell truncate" title="${escapeHtml(engineCell)}">${escapeHtml(engineCell)}</div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function getBatchStatusText(status) {
+    if (status === 'complete') return 'OK';
+    if (status === 'failed') return '失败';
+    if (status === 'scanning') return '扫描中';
+    return '等待';
+  }
+
+  function getBatchRowTitle(row) {
+    const number = row.rowIndex || '';
+    const name = String(row.name || '').trim();
+    const label = name && !isUrlLike(name) ? name : shortenPlayableUrl(row.url);
+    return `#${number} ${label || '未命名试玩'}`;
+  }
+
+  function getBatchRowMeta(row, statusText) {
+    const details = [statusText];
+    if (row.product) details.push(row.product);
+    if (row.schedule) details.push(row.schedule);
+    details.push(formatBatchUrlPair(row));
+    return details.filter(Boolean).join(' · ');
+  }
+
+  function getBatchRowTooltip(row) {
+    const scanUrl = getBatchScanUrl(row);
+    if (scanUrl && scanUrl !== row.url) {
+      return `详情页：${row.url}\n实际试玩：${scanUrl}`;
+    }
+    return row.url || '';
+  }
+
+  function formatBatchUrlPair(row) {
+    const input = shortenPlayableUrl(row.url);
+    const scanUrl = getBatchScanUrl(row);
+    if (scanUrl && scanUrl !== row.url) {
+      return `${input} -> ${shortenPlayableUrl(scanUrl)}`;
+    }
+    return input;
+  }
+
+  function getBatchScanUrl(row) {
+    return row.result?.resolvedUrl || row.result?.url || row.resolvedUrl || '';
+  }
+
+  function shortenPlayableUrl(url) {
+    if (!url) return '';
+    try {
+      const parsed = new URL(url);
+      const detailMatch = parsed.pathname.match(/\/detail\/([^/?#]+)/i);
+      if (detailMatch) return `detail/${shortHash(detailMatch[1])}`;
+
+      const htmlMatch = parsed.pathname.match(/\/([^/]*html[^/]*)$/i);
+      if (htmlMatch) return htmlMatch[1].slice(0, 26);
+
+      const lastPath = parsed.pathname.split('/').filter(Boolean).pop();
+      return lastPath ? `${parsed.hostname}/${shortHash(lastPath)}` : parsed.hostname;
+    } catch (e) {
+      return String(url).slice(0, 32);
+    }
+  }
+
+  function shortHash(value) {
+    const text = String(value || '');
+    if (text.length <= 18) return text;
+    return `${text.slice(0, 8)}...${text.slice(-6)}`;
+  }
+
+  function buildBatchEngineColumn(state = {}) {
+    const rows = state.rows || [];
+    return rows.map(row => {
+      if (row.status === 'failed') return '扫描失败';
+      if (!row.result) return '';
+      return formatEngineCell(row.result);
+    }).join('\n');
+  }
+
+  function buildBatchMapText(state = {}) {
+    const rows = state.rows || [];
+    const lines = ['序号\t试玩名称/短ID\t详情页/原链接\t实际试玩链接\t识别引擎\t最终结论\t置信度'];
+    rows.forEach(row => {
+      const result = row.result || {};
+      const engineCell = row.status === 'failed' ? '扫描失败' : (row.result ? formatEngineCell(result) : '');
+      const name = row.name && !isUrlLike(row.name) ? row.name : shortenPlayableUrl(row.url);
+      const scanUrl = getBatchScanUrl(row);
+      lines.push([
+        row.rowIndex || '',
+        name || '',
+        row.url || '',
+        scanUrl && scanUrl !== row.url ? scanUrl : '',
+        engineCell,
+        result.finalReviewStatus || '',
+        result.confidence || ''
+      ].map(sanitizeTsvCell).join('\t'));
+    });
+    return lines.join('\n');
+  }
+
+  function buildBatchRowsText(state = {}) {
+    const rows = state.rows || [];
+    const lines = [];
+
+    if (state.headerCells && state.headerCells.length > 0) {
+      lines.push(state.headerCells.join('\t'));
+    }
+
+    rows.forEach(row => {
+      const cells = [...(row.cells || [])];
+      const engineColumnIndex = Number.isInteger(row.engineColumnIndex) ? row.engineColumnIndex : getEngineColumnIndex(cells, state.headerCells || []);
+      while (cells.length <= engineColumnIndex) cells.push('');
+      cells[engineColumnIndex] = row.status === 'failed' ? '扫描失败' : (row.result ? formatEngineCell(row.result) : '');
+      lines.push(cells.join('\t'));
+    });
+
+    return lines.join('\n');
+  }
+
+  function sanitizeTsvCell(value) {
+    return String(value ?? '').replace(/\r?\n/g, ' ').replace(/\t/g, ' ').trim();
+  }
+
+  function formatEngineCell(result = {}) {
+    const engine = normalizeUnknown(result.engine);
+    const version = normalizeVersion(result.engineVersion);
+
+    if (engine === '未知') return '未知';
+    if (engine === 'Cocos Creator') return version ? `Cocos Creator v${version}` : 'Cocos Creator';
+    if (engine === 'Phaser') return version ? `Phaser v${version}` : 'Phaser';
+    if (engine === 'PixiJS') return version ? `PixiJS ${version}` : 'PixiJS';
+    if (engine === 'LayaAir') return version ? `LayaAir ${version}` : 'LayaAir';
+    if (engine === 'Egret') return version ? `Egret ${version}` : 'Egret';
+    if (engine === 'PlayCanvas') return version ? `PlayCanvas ${version}` : 'PlayCanvas';
+    if (engine.startsWith('Construct')) return version ? `${engine} ${version}` : engine;
+    return version ? `${engine} ${version}` : engine;
+  }
+
+  function normalizeUnknown(value) {
+    if (!value || value === 'Unknown' || String(value).includes('未知')) return '未知';
+    return String(value);
+  }
+
+  function normalizeVersion(value) {
+    if (!value || value === 'Unknown' || String(value).includes('未知')) return '';
+    return String(value).trim().replace(/^v/i, '');
+  }
+
+  async function copyBatchText(text, button) {
+    if (!text) return;
+    await navigator.clipboard.writeText(text);
+    const originalText = button.textContent;
+    button.textContent = '已复制';
+    setTimeout(() => { button.textContent = originalText; }, 1600);
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
   }
 
   function renderUI(data) {
