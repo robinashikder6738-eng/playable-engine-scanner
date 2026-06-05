@@ -1,12 +1,12 @@
-// Background service worker for Playable Engine Scanner v0.2.2
+// Background service worker for Playable Engine Scanner v0.3.3
 // Modular Design: rules/ engineRules.js, platformRules.js, businessRules.js
 
 import { engineRules } from './rules/engineRules.js';
 import { detectPlatforms } from './rules/platformRules.js';
 import { getRecommendations } from './rules/businessRules.js';
 
-const GLOBAL_SCAN_TIMEOUT = 8000;
-const FRAME_SCAN_TIMEOUT = 1500;
+const GLOBAL_SCAN_TIMEOUT = 12000;
+const FRAME_SCAN_TIMEOUT = 3000;
 const FETCH_SOURCE_TIMEOUT = 1200;
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -395,17 +395,20 @@ function analyzeProbeResult(raw) {
     const evalData = engineDef.evaluate(meta, globals, fetchedSources);
     if (evalData && evalData.score > 10) {
       if (evalData.type === 'renderLibrary') {
-        renderLibScores.push({
-          name: evalData.name,
-          score: evalData.score,
-          evidence: evalData.evidence,
-          version: evalData.version || '未知',
-          confidence: evalData.confidence
-        });
+        if (evalData.score >= 40) {
+          renderLibScores.push({
+            name: evalData.name,
+            score: evalData.score,
+            evidence: evalData.evidence,
+            version: evalData.version || '未知',
+            confidence: evalData.confidence
+          });
+        }
       } else {
         engineScores.push({
           name: evalData.name,
           score: evalData.score,
+          priority: engineDef.priority || 0,
           evidence: evalData.evidence,
           version: evalData.version || '未知',
           confidence: evalData.confidence
@@ -415,7 +418,7 @@ function analyzeProbeResult(raw) {
   });
 
   if (engineScores.length > 0) {
-    engineScores.sort((a, b) => b.score - a.score);
+    engineScores.sort((a, b) => (b.score - a.score) || (b.priority - a.priority));
     if (engineScores.length > 1 && (engineScores[0].score - engineScores[1].score < 25)) {
       results.conflictWarnings.push('探测到多个引擎强特征，建议技术复核。');
     }
@@ -468,10 +471,12 @@ async function saveToHistory(item) {
 
 async function handleScan(tabId, scanId) {
   await updateScanStatus(tabId, 'scanning', '正在遍历页面 Frames...');
+  const optionData = await chrome.storage.local.get(['scannerOptions']);
+  const scannerOptions = { scanFrames: true, ...(optionData.scannerOptions || {}) };
   
   let frames = [];
   try {
-    if (chrome.webNavigation && chrome.webNavigation.getAllFrames) {
+    if (scannerOptions.scanFrames && chrome.webNavigation && chrome.webNavigation.getAllFrames) {
       frames = await chrome.webNavigation.getAllFrames({ tabId });
     }
   } catch (e) {
@@ -549,49 +554,63 @@ async function performProbe(fetchTimeoutMs, scanId, tabId) {
     })()
   };
 
+  await new Promise(resolve => setTimeout(resolve, 600));
+
   // Probe Globals
   const globals = {};
-  const probeList = ['PIXI', 'cc', '_CCSettings', 'Phaser', 'Laya', 'laya', 'egret', 'pc', 'THREE', 'LUNA', 'LUNA_PLAYGROUND_BUND', 'luna', 'LUNA_PLAYGROUND_BUNDLE', '__PIXI_APP__', '__PIXI_DEVTOOLS__', 'cr', 'c3_runtime', 'cr_getC2Runtime', 'cr_createRuntime', 'mbridge', 'MBridge', 'MBSDK', 'mintegral'];
+  const snapshotGlobalObject = (obj) => ({
+    exists: true,
+    VERSION: obj.VERSION,
+    ENGINE_VERSION: obj.ENGINE_VERSION,
+    REVISION: obj.REVISION,
+    version: obj.version,
+    director: !!obj.director,
+    game: !!obj.game,
+    Application: !!obj.Application,
+    Renderer: !!obj.Renderer,
+    Ticker: !!obj.Ticker,
+    stage: !!obj.stage,
+    init: !!obj.init,
+    loader: !!obj.loader,
+    Browser: !!obj.Browser,
+    Sprite: !!obj.Sprite,
+    Scene: !!obj.Scene,
+    Game: !!obj.Game,
+    AUTO: !!obj.AUTO,
+    CANVAS: !!obj.CANVAS,
+    WEBGL: !!obj.WEBGL,
+    runEgret: !!obj.runEgret,
+    MainContext: !!obj.MainContext,
+    DisplayObject: !!obj.DisplayObject,
+    Stage: !!obj.Stage,
+    Capabilities: !!obj.Capabilities,
+    lifecycle: !!obj.lifecycle,
+    WebGLRenderer: !!obj.WebGLRenderer,
+    PerspectiveCamera: !!obj.PerspectiveCamera,
+    Mesh: !!obj.Mesh,
+    TextureLoader: !!obj.TextureLoader,
+    Entity: !!obj.Entity,
+    AssetRegistry: !!obj.AssetRegistry,
+    GraphicsDevice: !!obj.GraphicsDevice,
+    app: !!obj.app
+  });
+
+  const probeList = ['PIXI', 'cc', 'CocosEngine', '_CCSettings', 'Phaser', 'Laya', 'laya', 'egret', 'pc', 'THREE', 'LUNA', 'LUNA_PLAYGROUND_BUND', 'LUNA_PLAYGROUND_BUNDLE', '__PIXI_APP__', '__PIXI_DEVTOOLS__', 'cr', 'c3_runtime', 'cr_getC2Runtime', 'cr_createRuntime', 'mbridge', 'MBridge', 'MBSDK', 'mintegral'];
   probeList.forEach(g => {
     if (window[g]) {
-      const obj = window[g];
-      globals[g] = {
-        exists: true,
-        VERSION: obj.VERSION,
-        REVISION: obj.REVISION,
-        version: obj.version,
-        director: !!obj.director,
-        game: !!obj.game,
-        Application: !!obj.Application,
-        Renderer: !!obj.Renderer,
-        Ticker: !!obj.Ticker,
-        stage: !!obj.stage,
-        init: !!obj.init,
-        loader: !!obj.loader,
-        Browser: !!obj.Browser,
-        Sprite: !!obj.Sprite,
-        Scene: !!obj.Scene,
-        Game: !!obj.Game,
-        AUTO: !!obj.AUTO,
-        CANVAS: !!obj.CANVAS,
-        WEBGL: !!obj.WEBGL,
-        runEgret: !!obj.runEgret,
-        MainContext: !!obj.MainContext,
-        DisplayObject: !!obj.DisplayObject,
-        Stage: !!obj.Stage,
-        Capabilities: !!obj.Capabilities,
-        lifecycle: !!obj.lifecycle,
-        WebGLRenderer: !!obj.WebGLRenderer,
-        PerspectiveCamera: !!obj.PerspectiveCamera,
-        Mesh: !!obj.Mesh,
-        TextureLoader: !!obj.TextureLoader,
-        Entity: !!obj.Entity,
-        AssetRegistry: !!obj.AssetRegistry,
-        GraphicsDevice: !!obj.GraphicsDevice,
-        app: !!obj.app
-      };
+      globals[g] = snapshotGlobalObject(window[g]);
     }
   });
+
+  try {
+    const nestedPixi = window.app?.globals?.PIXI || window.app?.PIXI;
+    if (!globals.PIXI && nestedPixi) {
+      globals.PIXI = snapshotGlobalObject(nestedPixi);
+    }
+    if (!globals.__PIXI_APP__ && window.app?.globals?.pixiApp) {
+      globals.__PIXI_APP__ = { exists: true };
+    }
+  } catch (e) {}
 
   const fetchedSources = [];
   const scriptLoadWarnings = [];
@@ -620,5 +639,3 @@ async function performProbe(fetchTimeoutMs, scanId, tabId) {
     warnings: scriptLoadWarnings
   };
 }
-
-

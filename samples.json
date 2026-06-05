@@ -13,6 +13,55 @@
     "note": "PixiJS 官方示例"
   },
   {
+    "id": "sample-pixi-webpack-6-5-10",
+    "name": "PixiJS 6.5.10 Webpack 样本",
+    "url": "https://res1.applovin.com/pixi-webpack-6.5.10",
+    "expectedPlatform": "AppLovin",
+    "expectedEngine": "PixiJS",
+    "expectedEngineVersion": "6.5.10",
+    "expectedFinalReviewStatus": "可进入复刻评估",
+    "expectedConfidence": "高",
+    "manualEvidence": [
+      "PIXI.resources",
+      "var Ae=\"6.5.10\"",
+      "pixi.js",
+      "@pixi"
+    ],
+    "note": "Pixi v6 webpack 打包后可能没有 window.PIXI，但仍保留 PIXI.resources 上下文版本号"
+  },
+  {
+    "id": "sample-pixi-runtime-8-14-0",
+    "name": "PixiJS 8.14.0 运行时样本",
+    "url": "https://res1.applovin.com/pixi-runtime-8.14.0",
+    "expectedPlatform": "AppLovin",
+    "expectedEngine": "PixiJS",
+    "expectedEngineVersion": "8.14.0",
+    "expectedFinalReviewStatus": "可进入复刻评估",
+    "expectedConfidence": "高",
+    "manualEvidence": [
+      "app.globals.PIXI.VERSION = \"8.14.0\"",
+      "window.PIXI.VERSION = \"8.14.0\"",
+      "PIXI.UniformGroup"
+    ],
+    "note": "Pixi v8 常见于 app.globals.PIXI / app.PIXI 运行时对象"
+  },
+  {
+    "id": "sample-pixi-runtime-7-3-2-deprecation-noise",
+    "name": "PixiJS 7.3.2 废弃提示干扰样本",
+    "url": "https://res1.applovin.com/pixi-runtime-7.3.2",
+    "expectedPlatform": "AppLovin",
+    "expectedEngine": "PixiJS",
+    "expectedEngineVersion": "7.3.2",
+    "expectedFinalReviewStatus": "可进入复刻评估",
+    "expectedConfidence": "高",
+    "manualEvidence": [
+      "PixiJS 7.3.2",
+      "t.VERSION=\"7.3.2\"",
+      "Deprecated since v7.2.0"
+    ],
+    "note": "7.2.0 是 API 废弃起始版本，不应覆盖 PixiJS 实际运行版本 7.3.2"
+  },
+  {
     "id": "sample-luna-001",
     "name": "Luna AppLovin 样本",
     "url": "https://luna-sample.html",
@@ -36,6 +85,22 @@
       "Phaser.VERSION"
     ],
     "note": ""
+  },
+  {
+    "id": "sample-phaser2-applovin-pixi-dependency",
+    "name": "Phaser 2 + PixiJS 依赖样本",
+    "url": "https://res1.applovin.com/phaser2-pixi-dependency",
+    "expectedPlatform": "AppLovin",
+    "expectedEngine": "Phaser",
+    "expectedEngineVersion": "2.6.2",
+    "expectedFinalReviewStatus": "可进入复刻评估",
+    "expectedConfidence": "高",
+    "manualEvidence": [
+      "Phaser v2.6.2",
+      "Phaser.Game",
+      "PIXI.VERSION v2.2.9"
+    ],
+    "note": "Phaser 2 底层会带 PixiJS，主引擎应识别为 Phaser"
   },
   {
     "id": "sample-laya-001",
@@ -233,5 +298,159 @@
       "['applovin', 'mintegral', 'ironsource']"
     ],
     "note": "平台名单列表只作为可疑弱特征，不会触发多平台冲突，不会触发不可制作"
+  },
+  {
+    "id": "sample-platform-unityads-001",
+    "name": "Unity Ads 平台样本",
+    "url": "https://unityads.unity3d.com/playable/index.html",
+    "expectedPlatform": "Unity Ads",
+    "expectedEngine": "未知 / 高度混淆",
+    "expectedFinalReviewStatus": "未识别，交技术复核",
+    "expectedConfidence": "低",
+    "manualEvidence": [
+      "URL 明确包含: unityads.unity3d.com"
+    ],
+    "note": "补齐 README 已声明的 Unity Ads 平台识别"
+  },
+  {
+    "id": "sample-platform-google-admob-001",
+    "name": "Google / AdMob 平台样本",
+    "url": "https://googleads.g.doubleclick.net/pagead/ads",
+    "expectedPlatform": "Google / AdMob",
+    "expectedEngine": "未知 / 高度混淆",
+    "expectedFinalReviewStatus": "未识别，交技术复核",
+    "expectedConfidence": "低",
+    "manualEvidence": [
+      "URL 明确包含: googleads.g.doubleclick.net"
+    ],
+    "note": "补齐 README 已声明的 Google / AdMob 平台识别"
+  },
+  {
+    "id": "sample-cocos-creator-2-3-3",
+    "name": "Cocos Creator 2.3.3 样本",
+    "url": "https://example.com/cocos-creator-2.3.3",
+    "expectedPlatform": "Unknown",
+    "expectedEngine": "Cocos Creator",
+    "expectedEngineVersion": "2.3.3",
+    "expectedFinalReviewStatus": "可交设计手动处理",
+    "expectedConfidence": "高",
+    "manualEvidence": [
+      "cc.ENGINE_VERSION = \"2.3.3\"",
+      "cc.game",
+      "cc.director"
+    ],
+    "note": "Cocos Creator 2.3.x 白名单版本样本"
+  },
+  {
+    "id": "sample-cocos-creator-2-3-4",
+    "name": "Cocos Creator 2.3.4 样本",
+    "url": "https://example.com/cocos-creator-2.3.4",
+    "expectedPlatform": "Unknown",
+    "expectedEngine": "Cocos Creator",
+    "expectedEngineVersion": "2.3.4",
+    "expectedFinalReviewStatus": "可交设计手动处理",
+    "expectedConfidence": "高",
+    "manualEvidence": [
+      "cc.ENGINE_VERSION = \"2.3.4\"",
+      "cc.game",
+      "cc.director"
+    ],
+    "note": "Cocos Creator 2.3.x 白名单版本样本"
+  },
+  {
+    "id": "sample-cocos-creator-2-4-5",
+    "name": "Cocos Creator 2.4.5 样本",
+    "url": "https://example.com/cocos-creator-2.4.5",
+    "expectedPlatform": "Unknown",
+    "expectedEngine": "Cocos Creator",
+    "expectedEngineVersion": "2.4.5",
+    "expectedFinalReviewStatus": "可交设计手动处理",
+    "expectedConfidence": "高",
+    "manualEvidence": [
+      "cc.ENGINE_VERSION = \"2.4.5\"",
+      "cc.game",
+      "cc.director"
+    ],
+    "note": "Cocos Creator 2.4.x 白名单版本样本"
+  },
+  {
+    "id": "sample-cocos-creator-2-4-9",
+    "name": "Cocos Creator 2.4.9 样本",
+    "url": "https://example.com/cocos-creator-2.4.9",
+    "expectedPlatform": "Unknown",
+    "expectedEngine": "Cocos Creator",
+    "expectedEngineVersion": "2.4.9",
+    "expectedFinalReviewStatus": "可交设计手动处理",
+    "expectedConfidence": "高",
+    "manualEvidence": [
+      "cc.ENGINE_VERSION = \"2.4.9\"",
+      "cc.game",
+      "cc.director"
+    ],
+    "note": "Cocos Creator 2.4.x 白名单版本样本"
+  },
+  {
+    "id": "sample-cocos-creator-2-4-10",
+    "name": "Cocos Creator 2.4.10 样本",
+    "url": "https://example.com/cocos-creator-2.4.10",
+    "expectedPlatform": "Unknown",
+    "expectedEngine": "Cocos Creator",
+    "expectedEngineVersion": "2.4.10",
+    "expectedFinalReviewStatus": "可交设计手动处理",
+    "expectedConfidence": "高",
+    "manualEvidence": [
+      "cc.ENGINE_VERSION = \"2.4.10\"",
+      "cc.game",
+      "cc.director"
+    ],
+    "note": "Cocos Creator 2.4.x 白名单版本样本"
+  },
+  {
+    "id": "sample-cocos-creator-2-4-12",
+    "name": "Cocos Creator 2.4.12 样本",
+    "url": "https://example.com/cocos-creator-2.4.12",
+    "expectedPlatform": "Unknown",
+    "expectedEngine": "Cocos Creator",
+    "expectedEngineVersion": "2.4.12",
+    "expectedFinalReviewStatus": "可交设计手动处理",
+    "expectedConfidence": "高",
+    "manualEvidence": [
+      "cc.ENGINE_VERSION = \"2.4.12\"",
+      "cc.game",
+      "cc.director"
+    ],
+    "note": "Cocos Creator 2.4.x 白名单版本样本"
+  },
+  {
+    "id": "sample-cocos-creator-2-4-13",
+    "name": "Cocos Creator 2.4.13 样本",
+    "url": "https://example.com/cocos-creator-2.4.13",
+    "expectedPlatform": "Unknown",
+    "expectedEngine": "Cocos Creator",
+    "expectedEngineVersion": "2.4.13",
+    "expectedFinalReviewStatus": "可交设计手动处理",
+    "expectedConfidence": "高",
+    "manualEvidence": [
+      "cc.ENGINE_VERSION = \"2.4.13\"",
+      "cc.game",
+      "cc.director"
+    ],
+    "note": "Cocos Creator 2.4.x 白名单版本样本"
+  },
+  {
+    "id": "sample-cocos-creator-3-8-3-program",
+    "name": "Cocos Creator 3.8.3 程序处理样本",
+    "url": "https://example.com/cocos-creator-3.8.3",
+    "expectedPlatform": "Unknown",
+    "expectedEngine": "Cocos Creator",
+    "expectedEngineVersion": "3.8.3",
+    "expectedFinalReviewStatus": "需程序人工处理",
+    "expectedConfidence": "高",
+    "manualEvidence": [
+      "CocosEngine.ENGINE_VERSION = \"3.8.3\"",
+      "Cocos Creator v3.8.3",
+      "window.cc"
+    ],
+    "note": "非设计可手动处理版本，应交程序人工处理"
   }
 ]

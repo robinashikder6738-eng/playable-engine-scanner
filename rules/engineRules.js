@@ -5,7 +5,8 @@
 export const engineRules = [
   {
     name: 'Luna',
-    globals: ['LUNA', 'LUNA_PLAYGROUND_BUND', 'luna', 'LUNA_PLAYGROUND_BUNDLE'],
+    priority: 100,
+    globals: ['LUNA', 'LUNA_PLAYGROUND_BUND', 'LUNA_PLAYGROUND_BUNDLE'],
     evaluate: (meta, globals, fetchedSources) => {
       let score = 0;
       const evidence = [];
@@ -13,13 +14,13 @@ export const engineRules = [
       let hasStrong = false;
 
       // Global checks
-      if (globals.LUNA || globals.LUNA_PLAYGROUND_BUND || globals.luna || globals.LUNA_PLAYGROUND_BUNDLE) {
+      if (globals.LUNA || globals.LUNA_PLAYGROUND_BUND || globals.LUNA_PLAYGROUND_BUNDLE) {
         hasStrong = true;
         evidence.push('window.LUNA / LUNA_PLAYGROUND');
       }
 
       // Source checks
-      if (/window\.LUNA|LUNA_PLAYGROUND|LUNA_PLAYGROUND_BUNDLE/i.test(meta.html + meta.inlineScripts.join(''))) {
+      if (/\bwindow\.LUNA\b|\bwindow\.LUNA_PLAYGROUND(?:_BUND|_BUNDLE)?\b|\bLUNA_PLAYGROUND(?:_BUND|_BUNDLE)?\b/.test(meta.html + meta.inlineScripts.join(''))) {
         hasStrong = true;
         evidence.push('源码中检测到 Luna 关键字');
       }
@@ -48,22 +49,26 @@ export const engineRules = [
   },
   {
     name: 'PixiJS',
+    priority: 40,
     globals: ['PIXI', '__PIXI_APP__', '__PIXI_DEVTOOLS__'],
     evaluate: (meta, globals, fetchedSources) => {
       let score = 0;
       const evidence = [];
       let version = '未知';
       const combinedAll = (meta.html + meta.inlineScripts.join('\n') + meta.externalScripts.join('\n') + fetchedSources.map(s => s.text).join('\n'));
+      const pixiMemberHits = (combinedAll.match(/\bPIXI\.[A-Za-z_$][\w$]*/g) || []).length;
+      const embeddedInPhaser = !!globals.Phaser || /Phaser\s+v?[0-9]+\.[0-9]+\.[0-9]+|Phaser\.Game|Phaser\.CANVAS|Phaser\.WEBGL|phaser(?:\.min)?\.js/i.test(combinedAll);
 
       // 1. High Confidence Features
       const highFeatures = [
-        { test: () => globals.PIXI, label: 'window.PIXI' },
+        { test: () => globals.PIXI, label: 'PIXI 运行时对象' },
         { test: () => globals.PIXI?.VERSION, label: 'PIXI.VERSION' },
         { test: () => globals.__PIXI_APP__, label: '__PIXI_APP__' },
         { test: () => globals.__PIXI_DEVTOOLS__, label: '__PIXI_DEVTOOLS__' },
         { test: () => globals.PIXI?.Application || combinedAll.includes('PIXI.Application'), label: 'PIXI.Application' },
         { test: () => globals.PIXI?.Renderer || combinedAll.includes('PIXI.Renderer'), label: 'PIXI.Renderer' },
-        { test: () => globals.PIXI?.Ticker || combinedAll.includes('PIXI.Ticker'), label: 'PIXI.Ticker' }
+        { test: () => globals.PIXI?.Ticker || combinedAll.includes('PIXI.Ticker'), label: 'PIXI.Ticker' },
+        { test: () => pixiMemberHits >= 3, label: `多个 PIXI 核心调用 (${pixiMemberHits})` }
       ];
 
       // Version extraction
@@ -71,7 +76,8 @@ export const engineRules = [
       
       let versionMatch = combinedAll.match(/PixiJS\s+([0-9]+\.[0-9]+\.[0-9]+)/i) || 
                          combinedAll.match(/PIXI\.VERSION\s*=\s*["']([^"']+)["']/i) ||
-                         combinedAll.match(/@pixi\/[^"']+["']?\s*[:@]\s*([0-9]+\.[0-9]+\.[0-9]+)/i);
+                         combinedAll.match(/@pixi\/[^"']+["']?\s*[:@]\s*([0-9]+\.[0-9]+\.[0-9]+)/i) ||
+                         combinedAll.match(/PIXI\.(?:resources|systems)[\s\S]{0,800}?\bvar\s+\w+\s*=\s*["']([0-9]+\.[0-9]+\.[0-9]+)["']/i);
 
       if (!versionMatch) {
          const contextMatch = combinedAll.match(/(?:pixi|PIXI).{0,100}version\s*:\s*["']([0-9]+\.[0-9]+\.[0-9]+)["']/i);
@@ -134,27 +140,76 @@ export const engineRules = [
         finalScore = 20;
       }
 
+      if (embeddedInPhaser && finalScore > 0) {
+        evidence.push('检测到 Phaser 上下文，PixiJS 更可能是 Phaser 2 底层渲染依赖');
+        confidence = '中';
+        finalScore = Math.min(finalScore, 40);
+      }
+
       return { score: finalScore, evidence, name, version, confidence };
     }
   },
   {
     name: 'Cocos Creator',
-    globals: ['cc', '_CCSettings'],
+    priority: 90,
+    globals: ['cc', 'CocosEngine', '_CCSettings'],
     evaluate: (meta, globals, fetchedSources) => {
       const combinedAll = (meta.html + meta.inlineScripts.join('\n') + meta.externalScripts.join('\n') + fetchedSources.map(s => s.text).join('\n'));
+      const combinedLower = combinedAll.toLowerCase();
       const evidence = [];
+      let version = '未知';
+
+      const findVersion = (...candidates) => {
+        for (const candidate of candidates) {
+          if (typeof candidate !== 'string') continue;
+          const match = candidate.trim().match(/\b([0-9]+\.[0-9]+\.[0-9]+)\b/);
+          if (match) return match[1];
+        }
+        return '未知';
+      };
+
+      const versionPatterns = [
+        /cc\.ENGINE_VERSION\s*=\s*["']([^"']+)["']/i,
+        /CocosEngine\.ENGINE_VERSION\s*=\s*["']([^"']+)["']/i,
+        /ENGINE_VERSION\s*[:=]\s*["']([^"']+)["']/i,
+        /["']VERSION["']\s*,\s*["']([0-9]+\.[0-9]+\.[0-9]+)["'][\s\S]{0,160}?ENGINE_VERSION/i,
+        /VERSION[^"']{0,80}["']([0-9]+\.[0-9]+\.[0-9]+)["'][\s\S]{0,160}?ENGINE_VERSION/i,
+        /Cocos\s+Creator\s+v?([0-9]+\.[0-9]+\.[0-9]+)/i,
+        /cocos2d-js[^\n"'<>]{0,120}?([0-9]+\.[0-9]+\.[0-9]+)/i,
+        /"cocos-creator"\s*:\s*["']([0-9]+\.[0-9]+\.[0-9]+)["']/i,
+        /"cocos"\s*:\s*["']([0-9]+\.[0-9]+\.[0-9]+)["']/i
+      ];
+
+      version = findVersion(
+        globals.cc?.ENGINE_VERSION,
+        globals.cc?.VERSION,
+        globals.cc?.version,
+        globals.CocosEngine?.ENGINE_VERSION,
+        globals.CocosEngine?.VERSION,
+        globals.CocosEngine?.version
+      );
+
+      if (version === '未知') {
+        for (const pattern of versionPatterns) {
+          const match = combinedAll.match(pattern);
+          version = findVersion(match?.[1]);
+          if (version !== '未知') break;
+        }
+      }
       
       const features = {
         cc: !!globals.cc,
-        cocos: combinedAll.includes('cocos'),
+        cocos: combinedLower.includes('cocos'),
         game: !!(globals.cc && globals.cc.game),
         director: !!(globals.cc && globals.cc.director),
+        cocosEngine: !!globals.CocosEngine,
         settings: !!globals._CCSettings,
-        cocos2djs: combinedAll.includes('cocos2d-js')
+        cocos2djs: combinedLower.includes('cocos2d-js'),
+        engineVersion: version !== '未知'
       };
 
       // Strong features count
-      const strongFeaturesArr = [features.game, features.director, features.settings, features.cocos2djs];
+      const strongFeaturesArr = [features.game, features.director, features.cocosEngine, features.settings, features.cocos2djs, features.engineVersion];
       const strongHits = strongFeaturesArr.filter(Boolean).length;
 
       let confidence = '低';
@@ -178,14 +233,17 @@ export const engineRules = [
       if (features.cc) evidence.push('window.cc');
       if (features.game) evidence.push('cc.game');
       if (features.director) evidence.push('cc.director');
+      if (features.cocosEngine) evidence.push('window.CocosEngine');
       if (features.settings) evidence.push('_CCSettings');
       if (features.cocos2djs) evidence.push('cocos2d-js');
+      if (features.engineVersion) evidence.push(`获取到 Cocos Creator 版本: ${version}`);
 
-      return { score, evidence, name, confidence };
+      return { score, evidence, name, version, confidence };
     }
   },
   {
     name: 'Phaser',
+    priority: 90,
     globals: ['Phaser'],
     evaluate: (meta, globals, fetchedSources) => {
       let version = '未知';
@@ -244,6 +302,7 @@ export const engineRules = [
   },
   {
     name: 'LayaAir',
+    priority: 85,
     globals: ['Laya', 'laya'],
     evaluate: (meta, globals, fetchedSources) => {
       let version = '未知';
@@ -307,6 +366,7 @@ export const engineRules = [
   },
   {
     name: 'Egret',
+    priority: 85,
     globals: ['egret'],
     evaluate: (meta, globals, fetchedSources) => {
       let version = '未知';
@@ -420,6 +480,7 @@ export const engineRules = [
   },
   {
     name: 'PlayCanvas',
+    priority: 85,
     globals: ['pc'],
     evaluate: (meta, globals, fetchedSources) => {
       let version = '未知';
@@ -479,6 +540,7 @@ export const engineRules = [
   },
   {
     name: 'Construct',
+    priority: 85,
     globals: ['cr', 'c3_runtime', 'cr_getC2Runtime', 'cr_createRuntime'],
     evaluate: (meta, globals, fetchedSources) => {
       let version = '未知';

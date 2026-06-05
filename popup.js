@@ -1,4 +1,4 @@
-// popup.js v0.1.4
+// popup.js v0.3.3
 // Manages UI polling and communication with the background scanner
 
 document.addEventListener('DOMContentLoaded', async () => {

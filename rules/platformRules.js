@@ -119,6 +119,30 @@ export function detectPlatforms(meta, globals = {}, fetchedSources = []) {
     suspiciousPlatformEvidence.push('源码中存在弱关键词: tiktok/pangle');
   }
 
+  // Unity Ads
+  const unityConfirmed = checkUrl(['unityads.unity3d.com', 'unityads', 'ads.unity.com']);
+  if (unityConfirmed.length > 0) {
+    confirmedPlatformEvidence.push(...unityConfirmed);
+    platformsDetected.push('Unity Ads');
+  } else if (sourceTexts.includes('unityads')) {
+    suspiciousPlatformEvidence.push('源码中存在弱关键词: unityads');
+  }
+
+  // Google / AdMob
+  const googleConfirmed = checkUrl([
+    'admob',
+    'googleads.g.doubleclick.net',
+    'pagead2.googlesyndication.com',
+    'googlesyndication.com',
+    'doubleclick.net'
+  ]);
+  if (googleConfirmed.length > 0) {
+    confirmedPlatformEvidence.push(...googleConfirmed);
+    platformsDetected.push('Google / AdMob');
+  } else if (sourceTexts.includes('admob') || sourceTexts.includes('googlesyndication') || sourceTexts.includes('googleads')) {
+    suspiciousPlatformEvidence.push('源码中存在弱关键词: admob/googleads');
+  }
+
   if (platformsDetected.length > 1) {
     adPlatform = '多平台特征';
   } else if (platformsDetected.length === 1) {

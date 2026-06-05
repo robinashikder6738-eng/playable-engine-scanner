@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -8,26 +8,27 @@
     body { font-family: -apple-system, sans-serif; padding: 20px; max-width: 600px; margin: 0 auto; color: #333; line-height: 1.5; }
     h1 { border-bottom: 2px solid #2563eb; padding-bottom: 10px; color: #2563eb; font-size: 24px; }
     .option-group { margin-bottom: 24px; background: #f8fafc; padding: 16px; border-radius: 8px; border: 1px solid #e2e8f0; }
-    label { display: block; margin-bottom: 8px; font-weight: bold; font-size: 16px; }
+    label { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; font-weight: bold; font-size: 16px; }
+    input[type="checkbox"] { width: 18px; height: 18px; }
     p { font-size: 14px; color: #64748b; margin: 0; }
     button { padding: 10px 24px; background: #2563eb; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 14px; transition: background 0.2s; }
     button:hover { background: #1d4ed8; }
+    #status { margin-left: 12px; font-size: 13px; color: #16a34a; }
   </style>
 </head>
 <body>
   <h1>扫描器设置</h1>
   
   <div class="option-group">
-    <label>自动扫描</label>
-    <p>页面加载时自动运行引擎扫描（即将推出）。</p>
-  </div>
-
-  <div class="option-group">
-    <label>深度扫描 iframe</label>
-    <p>默认开启。将扫描所有嵌套的 iframe 以寻找潜在的试玩广告引擎特征。</p>
+    <label for="scan-frames">
+      <input type="checkbox" id="scan-frames">
+      深度扫描 iframe
+    </label>
+    <p>开启后会扫描当前标签页内的所有 frame；关闭后仅扫描主页面，速度更快但可能漏掉嵌套试玩内容。</p>
   </div>
 
   <button id="save">保存设置</button>
+  <span id="status" aria-live="polite"></span>
 
   <script src="options.js"></script>
 </body>
